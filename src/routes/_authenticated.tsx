@@ -39,6 +39,7 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AbbLogo } from "@/components/AbbLogo";
 
 // ─── Nav definition ────────────────────────────────────────────────────────
 
@@ -207,7 +208,7 @@ function AuthenticatedLayout() {
       ({ to }) => pathname === to || pathname.startsWith(to + "/")
     )?.labelKey
       ? t(navItems.find(({ to }) => pathname === to || pathname.startsWith(to + "/"))!.labelKey)
-      : "ATC Gate";
+      : "ABB";
 
   const initials = (user.email ?? "U").slice(0, 2).toUpperCase();
   const roleLabel = isAdmin ? t("common.admin") : t("common.operator");
@@ -234,13 +235,17 @@ function AuthenticatedLayout() {
             collapsed ? "justify-center px-0" : "gap-3 px-5"
           )}
         >
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary shadow-sm text-primary-foreground">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
+          {collapsed ? (
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary shadow-sm text-primary-foreground">
+              <ShieldCheck className="h-5 w-5" />
+            </div>
+          ) : (
+            <AbbLogo className="h-8 w-[76px] shrink-0 object-contain" />
+          )}
           {!collapsed && (
             <div className="min-w-0">
               <p className="truncate text-sm font-bold tracking-tight text-sidebar-foreground">
-                ATC Gate
+                ABB
               </p>
               <p className="truncate text-[10px] text-sidebar-foreground/50 font-medium uppercase tracking-widest">
                 Verification
@@ -427,7 +432,7 @@ function AuthenticatedLayout() {
               <Menu className="h-5 w-5" />
             </button>
             <div>
-              <p className="text-sm font-bold leading-tight tracking-tight">ATC Gate</p>
+              <p className="text-sm font-bold leading-tight tracking-tight">ABB</p>
               <p className="text-[10px] font-medium leading-tight text-muted-foreground">{pageTitle}</p>
             </div>
           </div>
@@ -561,11 +566,9 @@ function AuthenticatedLayout() {
             {/* Drawer header */}
             <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-4">
               <div className="flex items-center gap-2.5">
-                <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
-                  <ShieldCheck className="h-4 w-4" />
-                </div>
+                <AbbLogo className="h-6 w-[58px] shrink-0 object-contain" />
                 <div>
-                  <p className="text-sm font-bold text-sidebar-foreground">ATC Gate</p>
+                  <p className="text-sm font-bold text-sidebar-foreground">ABB</p>
                   <p className="text-[10px] font-medium text-sidebar-foreground/50">{roleLabel}</p>
                 </div>
               </div>

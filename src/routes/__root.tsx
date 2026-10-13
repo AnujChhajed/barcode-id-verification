@@ -68,21 +68,21 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
 
       // App identity
-      { title: "ATC Gate · Barcode Student Verification" },
+      { title: "ABB · Barcode Student Verification" },
       { name: "description", content: "Arusha Technical College — main gate barcode student verification and access control system." },
       { name: "author", content: "Dionysius John Kassongo" },
 
       // PWA / mobile app feel
-      { name: "theme-color", content: "#2d6b4a" },
+      { name: "theme-color", content: "#ED1C24" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "ATC Gate" },
-      { name: "application-name", content: "ATC Gate" },
-      { name: "msapplication-TileColor", content: "#2d6b4a" },
+      { name: "apple-mobile-web-app-title", content: "ABB" },
+      { name: "application-name", content: "ABB" },
+      { name: "msapplication-TileColor", content: "#ED1C24" },
 
       // Open Graph
-      { property: "og:title", content: "ATC Gate · Barcode Student Verification" },
+      { property: "og:title", content: "ABB · Barcode Student Verification" },
       { property: "og:description", content: "Main gate access control for Arusha Technical College." },
       { property: "og:type", content: "website" },
     ],

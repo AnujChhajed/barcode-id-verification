@@ -1,24 +1,24 @@
 {
-  "name": "ATC Gate — Barcode Verification",
-  "short_name": "ATC Gate",
+  "name": "ABB — Barcode Verification",
+  "short_name": "ABB",
   "description": "Arusha Technical College main gate barcode student verification and access-control system.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait-primary",
-  "background_color": "#fbfcfe",
-  "theme_color": "#2d6b4a",
+  "background_color": "#F3F4F6",
+  "theme_color": "#ED1C24",
   "lang": "en",
   "categories": ["education", "productivity", "utilities"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%232d6b4a'/%3E%3Cpath d='M64 56h8v80h-8zm16 0h4v80h-4zm12 0h8v80h-8zm16 0h4v80h-4zm12 0h8v80h-8zM56 148h80v8H56z' fill='white' opacity='.9'/%3E%3Ccircle cx='96' cy='80' r='20' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M88 80l6 6 12-12' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%23ED1C24'/%3E%3Cpath d='M64 56h8v80h-8zm16 0h4v80h-4zm12 0h8v80h-8zm16 0h4v80h-4zm12 0h8v80h-8zM56 148h80v8H56z' fill='white' opacity='.9'/%3E%3Ccircle cx='96' cy='80' r='20' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M88 80l6 6 12-12' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%232d6b4a'/%3E%3Cpath d='M160 140h24v232h-24zm40 0h12v232h-12zm32 0h24v232h-24zm40 0h12v232h-12zm32 0h24v232h-24zM140 392h232v24H140z' fill='white' opacity='.9'/%3E%3Ccircle cx='256' cy='208' r='56' fill='none' stroke='white' stroke-width='12'/%3E%3Cpath d='M234 208l18 18 34-34' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%23ED1C24'/%3E%3Cpath d='M160 140h24v232h-24zm40 0h12v232h-12zm32 0h24v232h-24zm40 0h12v232h-12zm32 0h24v232h-24zM140 392h232v24H140z' fill='white' opacity='.9'/%3E%3Ccircle cx='256' cy='208' r='56' fill='none' stroke='white' stroke-width='12'/%3E%3Cpath d='M234 208l18 18 34-34' stroke='white' stroke-width='12' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"

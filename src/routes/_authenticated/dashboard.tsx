@@ -146,7 +146,7 @@ function Dashboard() {
   ];
 
   // Hardcoded hex values — CSS custom properties don't resolve inside SVG fill attributes
-  const C = { allowed: "#22c55e", denied: "#ef4444", unknown: "#f59e0b" };
+  const C = { allowed: "#16A34A", denied: "#DC2626", unknown: "#F59E0B" };
 
   const pieData = stats ? [
     { name: t("common.allowed"), value: stats.allowed, color: C.allowed },

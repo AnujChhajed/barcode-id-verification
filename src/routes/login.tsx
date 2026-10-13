@@ -5,10 +5,11 @@ import { useAuth } from "@/lib/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ShieldCheck, ScanLine, Users, BarChart3 } from "lucide-react";
+import { ScanLine, Users, BarChart3 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AbbLogo } from "@/components/AbbLogo";
 
 export const Route = createFileRoute("/login")({
   component: LoginPage,
@@ -63,67 +64,59 @@ function LoginPage() {
 
       {/* ── Left branding panel (hidden on small screens) ── */}
       <div
-        className="relative hidden w-[45%] flex-col justify-between overflow-hidden p-10 text-primary-foreground lg:flex"
-        style={{ background: "var(--gradient-hero)" }}
+        className="hidden w-[45%] flex-col justify-between border-r border-border bg-card p-10 text-foreground lg:flex"
       >
-        <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/5" />
-        <div className="pointer-events-none absolute -bottom-32 -left-16 h-96 w-96 rounded-full bg-black/10" />
-
         {/* Logo */}
-        <div className="relative flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-white/20 backdrop-blur">
-            <ShieldCheck className="h-6 w-6" />
-          </div>
+        <div className="flex items-center gap-3">
+          <AbbLogo className="h-8 w-[78px] shrink-0 object-contain" />
           <div>
-            <p className="text-base font-bold tracking-tight">ATC Gate</p>
-            <p className="text-xs font-medium opacity-70 uppercase tracking-widest">
+            <p className="text-base font-bold tracking-tight">ABB</p>
+            <p className="text-xs font-medium uppercase tracking-widest text-muted-foreground">
               {t("login.barcode_ver")}
             </p>
           </div>
         </div>
 
         {/* Headline */}
-        <div className="relative space-y-5">
-          <p className="text-xs font-semibold uppercase tracking-widest opacity-70">
+        <div className="max-w-md space-y-5">
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary">
             {t("login.brand_subtitle")}
           </p>
           <h1 className="text-4xl font-bold leading-tight tracking-tight whitespace-pre-line">
             {t("login.secure_campus")}
           </h1>
-          <p className="max-w-xs text-sm leading-relaxed opacity-80">
+          <p className="max-w-xs text-sm leading-relaxed text-muted-foreground">
             {t("login.scan_desc")}
           </p>
 
           <ul className="space-y-3 pt-2">
             {features.map(({ icon: Icon, text }) => (
               <li key={text} className="flex items-center gap-3 text-sm">
-                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/15">
+                <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
                   <Icon className="h-3.5 w-3.5" />
                 </div>
-                <span className="opacity-90">{text}</span>
+                <span>{text}</span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="relative text-xs opacity-50">{t("login.dept_footer")}</p>
+        <p className="text-xs text-muted-foreground">{t("login.dept_footer")}</p>
       </div>
 
       {/* ── Right form panel ── */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+      <div className="flex flex-1 flex-col items-center justify-center bg-background px-5 py-10 sm:px-8 sm:py-12">
 
         {/* Mobile-only logo */}
         <div className="mb-8 flex items-center gap-3 lg:hidden">
-          <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <ShieldCheck className="h-5 w-5" />
-          </div>
+          <AbbLogo className="h-8 w-[78px] shrink-0 object-contain" />
           <div>
-            <p className="text-base font-bold">ATC Gate</p>
+            <p className="text-base font-bold">ABB</p>
             <p className="text-xs text-muted-foreground">{t("login.barcode_ver")}</p>
           </div>
         </div>
 
-        <div className="w-full max-w-[380px]">
+        <div className="w-full max-w-[420px] rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
           {/* Language switcher */}
           <div className="mb-6 flex justify-center">
             <LanguageSwitcher />

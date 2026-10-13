@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AbbLogo } from "@/components/AbbLogo";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,7 +16,6 @@ import {
   XCircle,
   Clock,
   ScanLine,
-  ShieldCheck,
   ArrowLeft,
   LayoutDashboard,
 } from "lucide-react";
@@ -129,9 +129,7 @@ function CardCheckPage() {
 
       {/* ── Header ── */}
       <header className="flex items-center gap-3 border-b border-border bg-card px-5 py-4 shadow-sm">
-        <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-          <ShieldCheck className="h-5 w-5" />
-        </div>
+        <AbbLogo className="h-8 w-[76px] shrink-0 object-contain" />
         <div>
           <p className="text-sm font-bold leading-tight">{t("check.header_title")}</p>
           <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">

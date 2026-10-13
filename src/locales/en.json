@@ -41,7 +41,7 @@
     "scans_today":      "Scans today"
   },
   "check": {
-    "header_title":    "ATC Gate",
+    "header_title":    "ABB",
     "card_status":     "Card Status Check",
     "title":           "Check your card status",
     "subtitle":        "Enter your admission number or scan your barcode to see if your card is active.",

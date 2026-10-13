@@ -2,6 +2,7 @@ import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth-context";
 import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { AbbLogo } from "@/components/AbbLogo";
 import {
   ShieldCheck, ScanLine, Users, BarChart3, QrCode, Zap, Lock,
   Bell, Clock, UserCheck, Building2, ChevronRight, CheckCircle2,
@@ -90,11 +91,9 @@ function Landing() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3.5">
           {/* Logo */}
           <div className="flex items-center gap-2.5">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
-              <ShieldCheck className="h-5 w-5" />
-            </div>
+            <AbbLogo className="h-8 w-[76px] shrink-0 object-contain" />
             <div className="leading-tight">
-              <p className="text-sm font-bold tracking-tight">ATC Gate</p>
+              <p className="text-sm font-bold tracking-tight">ABB</p>
               <p className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground">
                 {t("landing.nav_verify")}
               </p>
@@ -438,11 +437,9 @@ function Landing() {
             {/* Brand */}
             <div>
               <div className="flex items-center gap-2.5">
-                <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary text-primary-foreground">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
+                <AbbLogo className="h-8 w-[76px] shrink-0 object-contain" />
                 <div>
-                  <p className="text-sm font-bold">ATC Gate</p>
+                  <p className="text-sm font-bold">ABB</p>
                   <p className="text-[10px] uppercase tracking-widest text-muted-foreground">{t("landing.nav_verify")}</p>
                 </div>
               </div>
