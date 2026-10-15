@@ -127,6 +127,60 @@ export type Database = {
         }
         Relationships: []
       }
+      canteen_logs: {
+        Row: {
+          created_at: string
+          decision: Database["public"]["Enums"]["access_decision"]
+          id: string
+          log_date: string
+          meal_type: string
+          plant_id: string | null
+          reason: string | null
+          scanned_by: string | null
+          scanned_code: string
+          student_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          decision?: Database["public"]["Enums"]["access_decision"]
+          id?: string
+          log_date?: string
+          meal_type?: string
+          plant_id?: string | null
+          reason?: string | null
+          scanned_by?: string | null
+          scanned_code: string
+          student_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          decision?: Database["public"]["Enums"]["access_decision"]
+          id?: string
+          log_date?: string
+          meal_type?: string
+          plant_id?: string | null
+          reason?: string | null
+          scanned_by?: string | null
+          scanned_code?: string
+          student_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canteen_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canteen_logs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           confirmed_at: string | null
@@ -195,6 +249,67 @@ export type Database = {
           },
         ]
       }
+      canteen_logs: {
+        Row: {
+          created_at: string
+          decision: Database["public"]["Enums"]["access_decision"]
+          id: string
+          log_date: string
+          meal_type: string
+          plant_id: string | null
+          reason: string | null
+          scanned_by: string | null
+          scanned_code: string
+          student_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          decision?: Database["public"]["Enums"]["access_decision"]
+          id?: string
+          log_date?: string
+          meal_type?: string
+          plant_id?: string | null
+          reason?: string | null
+          scanned_by?: string | null
+          scanned_code: string
+          student_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          decision?: Database["public"]["Enums"]["access_decision"]
+          id?: string
+          log_date?: string
+          meal_type?: string
+          plant_id?: string | null
+          reason?: string | null
+          scanned_by?: string | null
+          scanned_code?: string
+          student_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canteen_logs_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canteen_logs_scanned_by_fkey"
+            columns: ["scanned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canteen_logs_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       gates: {
         Row: {
           created_at: string
@@ -202,6 +317,7 @@ export type Database = {
           is_active: boolean
           location: string | null
           name: string
+          plant_id: string | null
         }
         Insert: {
           created_at?: string
@@ -209,6 +325,7 @@ export type Database = {
           is_active?: boolean
           location?: string | null
           name: string
+          plant_id?: string | null
         }
         Update: {
           created_at?: string
@@ -216,8 +333,17 @@ export type Database = {
           is_active?: boolean
           location?: string | null
           name?: string
+          plant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "gates_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       incidents: {
         Row: {
@@ -327,6 +453,33 @@ export type Database = {
           },
         ]
       }
+      plants: {
+        Row: {
+          code: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -429,64 +582,87 @@ export type Database = {
         Row: {
           admission_number: string
           barcode: string
+          category: Database["public"]["Enums"]["person_category"]
+          company_name: string | null
           created_at: string
           expires_at: string | null
           full_name: string
           id: string
+          institution: string | null
           is_visitor: boolean
           notes: string | null
           nta_level: string
           parent_email: string | null
           parent_phone: string | null
           photo_url: string | null
+          plant_id: string | null
           programme: string
           status: Database["public"]["Enums"]["student_status"]
           suspended_until: string | null
           suspension_reason: string | null
           updated_at: string
+          valid_from: string | null
           year_of_study: number
         }
         Insert: {
           admission_number: string
           barcode: string
+          category?: Database["public"]["Enums"]["person_category"]
+          company_name?: string | null
           created_at?: string
           expires_at?: string | null
           full_name: string
           id?: string
+          institution?: string | null
           is_visitor?: boolean
           notes?: string | null
           nta_level?: string
           parent_email?: string | null
           parent_phone?: string | null
           photo_url?: string | null
+          plant_id?: string | null
           programme?: string
           status?: Database["public"]["Enums"]["student_status"]
           suspended_until?: string | null
           suspension_reason?: string | null
           updated_at?: string
+          valid_from?: string | null
           year_of_study?: number
         }
         Update: {
           admission_number?: string
           barcode?: string
+          category?: Database["public"]["Enums"]["person_category"]
+          company_name?: string | null
           created_at?: string
           expires_at?: string | null
           full_name?: string
           id?: string
+          institution?: string | null
           is_visitor?: boolean
           notes?: string | null
           nta_level?: string
           parent_email?: string | null
           parent_phone?: string | null
           photo_url?: string | null
+          plant_id?: string | null
           programme?: string
           status?: Database["public"]["Enums"]["student_status"]
           suspended_until?: string | null
           suspension_reason?: string | null
           updated_at?: string
+          valid_from?: string | null
           year_of_study?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "students_plant_id_fkey"
+            columns: ["plant_id"]
+            isOneToOne: false
+            referencedRelation: "plants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
@@ -585,10 +761,20 @@ export type Database = {
         Returns: boolean
       }
       is_admin: { Args: never; Returns: boolean }
+      verify_gate_access: {
+        Args: {
+          p_code: string
+          p_gate_id?: string | null
+          p_direction?: Database["public"]["Enums"]["scan_direction"]
+          p_operator_note?: string | null
+        }
+        Returns: Json
+      }
     }
     Enums: {
       access_decision: "allowed" | "denied" | "unknown"
       app_role: "admin" | "gate"
+      person_category: "worker" | "intern" | "visitor"
       scan_direction: "in" | "out"
       student_status: "active" | "suspended" | "graduated"
     }
@@ -720,6 +906,7 @@ export const Constants = {
     Enums: {
       access_decision: ["allowed", "denied", "unknown"],
       app_role: ["admin", "gate"],
+      person_category: ["worker", "intern", "visitor"],
       scan_direction: ["in", "out"],
       student_status: ["active", "suspended", "graduated"],
     },

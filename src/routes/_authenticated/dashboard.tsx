@@ -1,10 +1,17 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
+import { useEffect, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
-import { Users, ScanLine, CheckCircle2, XCircle, Clock, UserCheck, UserPlus, AlertTriangle, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { PassRenewalModal, RenewablePerson } from "@/components/PassRenewalModal";
+import {
+  Users, ScanLine, CheckCircle2, XCircle, Clock, UserCheck, UserPlus,
+  AlertTriangle, X, CalendarClock, ShieldAlert, HardHat, GraduationCap,
+  Calendar, RefreshCw, ChevronRight
+} from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from "recharts";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({
@@ -21,7 +28,58 @@ function localDateStr(d: Date) {
 
 function Dashboard() {
   const { t } = useTranslation();
-  const { isAdmin } = useAuth();
+  const { isAdmin, loading } = useAuth();
+
+  // ── Renewal Modal State (Task 8.2) ───────────────────────────────────────
+  const [renewalPerson, setRenewalPerson] = useState<RenewablePerson | null>(null);
+  const [renewalOpen, setRenewalOpen]     = useState(false);
+
+  // ── Expiry Enforcement & Validity Window Query (Task 8.1) ─────────────────
+  const {
+    data: expiryData,
+    refetch: refetchExpiries,
+    isLoading: expiriesLoading,
+  } = useQuery({
+    queryKey: ["dashboard-expiries"],
+    refetchInterval: 60_000,
+    queryFn: async () => {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const todayStr = localDateStr(today);
+
+      const next7Days = new Date(today);
+      next7Days.setDate(next7Days.getDate() + 7);
+      const next7Str = localDateStr(next7Days);
+
+      // Query personnel expiring within next 7 days or already expired
+      const { data, error } = await supabase
+        .from("students")
+        .select("id,full_name,admission_number,category,company_name,institution,expires_at,status,notes")
+        .not("expires_at", "is", null)
+        .lte("expires_at", `${next7Str}T23:59:59`)
+        .order("expires_at", { ascending: true })
+        .limit(30);
+
+      if (error) throw error;
+
+      const records = (data ?? []) as any[];
+      const expiredList = records.filter(
+        (r) => new Date(r.expires_at).getTime() < today.getTime()
+      );
+      const expiringSoonList = records.filter(
+        (r) =>
+          new Date(r.expires_at).getTime() >= today.getTime() &&
+          new Date(r.expires_at).getTime() <= new Date(`${next7Str}T23:59:59`).getTime()
+      );
+
+      return {
+        expiredList,
+        expiringSoonList,
+        totalExpired: expiredList.length,
+        totalExpiringSoon: expiringSoonList.length,
+      };
+    },
+  });
 
   const { data: stats } = useQuery({
     queryKey: ["dashboard-stats"],
@@ -29,7 +87,6 @@ function Dashboard() {
     queryFn: async () => {
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const todayISO    = today.toISOString();
-      // Local date string for expires_at comparison (avoid UTC-date bug)
       const todayLocal  = localDateStr(today);
       const [students, todayLogs, allowed, denied, entries, exits, activeVisitors] = await Promise.all([
         supabase.from("students").select("id", { count: "exact", head: true }).eq("status", "active").eq("is_visitor", false),
@@ -136,6 +193,9 @@ function Dashboard() {
     return () => { active = false; supabase.removeChannel(ch); };
   }, []);
 
+  if (loading) return null;
+  if (!isAdmin) return <Navigate to="/verify" replace />;
+
   const cards = [
     { label: t("common.active_students"),  value: stats?.students        ?? "—", icon: Users,       color: "text-primary"     },
     { label: t("common.scans_today"),      value: stats?.scans           ?? "—", icon: ScanLine,    color: "text-foreground"  },
@@ -153,6 +213,11 @@ function Dashboard() {
     { name: t("common.denied"),  value: stats.denied,  color: C.denied  },
     { name: t("common.unknown"), value: Math.max(0, stats.scans - stats.allowed - stats.denied), color: C.unknown },
   ] : [];
+
+  const handleOpenRenewal = (p: RenewablePerson) => {
+    setRenewalPerson(p);
+    setRenewalOpen(true);
+  };
 
   return (
     <div className="space-y-6">
@@ -175,14 +240,30 @@ function Dashboard() {
         </div>
       )}
 
+      {/* ── Top Header ── */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">{t("dash.title")}</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("dash.title")}</h1>
+            <Badge variant="outline" className="border-red-600/30 bg-red-600/10 text-red-600 font-semibold text-xs px-2 py-0.5">
+              ABB Plant 3
+            </Badge>
+          </div>
           <p className="text-sm text-muted-foreground">{isAdmin ? t("dash.subtitle_admin") : t("dash.subtitle_op")}</p>
         </div>
-        <Link to="/verify" className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90">{t("dash.open_scanner")}</Link>
+        <div className="flex items-center gap-2">
+          <Link to="/canteen">
+            <Button variant="outline" size="sm" className="gap-1.5 text-xs">
+              Canteen Turnstile
+            </Button>
+          </Link>
+          <Link to="/verify" className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 shadow-sm transition-colors">
+            {t("dash.open_scanner")}
+          </Link>
+        </div>
       </div>
 
+      {/* ── Quick KPI Stat Cards ── */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="rounded-xl border border-border bg-card p-5 shadow-sm">
@@ -195,6 +276,143 @@ function Dashboard() {
         ))}
       </div>
 
+      {/* ── Phase 8 Task 8.1 & 8.2: Credential Validity & Expiry Alerts Widget ── */}
+      <div className="rounded-xl border border-border bg-card p-5 shadow-sm space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-amber-500/10 text-amber-600">
+              <CalendarClock className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">
+                Credential Validity & Expiry Alerts
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Automated gate rejection active for expired passes • 7-day upcoming expiration warning window
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Badge variant="destructive" className="text-xs font-bold gap-1 px-2 py-0.5">
+              {expiryData?.totalExpired ?? 0} Expired
+            </Badge>
+            <Badge variant="outline" className="border-amber-500/40 text-amber-600 bg-amber-500/10 text-xs font-bold gap-1 px-2 py-0.5">
+              {expiryData?.totalExpiringSoon ?? 0} Expiring &lt;7 Days
+            </Badge>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => refetchExpiries()}
+              className="h-8 w-8 p-0"
+              title="Refresh expiries"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${expiriesLoading ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        </div>
+
+        {/* List of Expired & Expiring Soon Personnel */}
+        {expiriesLoading ? (
+          <div className="py-8 text-center text-xs text-muted-foreground">
+            Checking validity status against database…
+          </div>
+        ) : (expiryData?.expiredList.length === 0 && expiryData?.expiringSoonList.length === 0) ? (
+          <div className="flex items-center justify-between rounded-lg bg-secondary/30 p-4 text-xs text-muted-foreground">
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              All registered workers, interns, and visitor passes are within valid authorization periods.
+            </span>
+            <span className="font-medium text-foreground">0 expiring within 7 days</span>
+          </div>
+        ) : (
+          <div className="divide-y divide-border/60">
+            {/* Show up to 8 combined items */}
+            {[...(expiryData?.expiredList ?? []), ...(expiryData?.expiringSoonList ?? [])].slice(0, 8).map((p: any) => {
+              const isPast = new Date(p.expires_at).getTime() < Date.now();
+              const category = p.category || "worker";
+              const org = p.company_name || p.institution || "ABB Plant 3";
+
+              // Calculate days remaining / elapsed
+              const diffDays = Math.ceil(
+                (new Date(p.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+              );
+
+              return (
+                <div key={p.id} className="py-3 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div
+                      className={`grid h-8 w-8 shrink-0 place-items-center rounded-full font-bold text-[10px] ${
+                        isPast
+                          ? "bg-destructive/10 text-destructive ring-1 ring-destructive/30"
+                          : "bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/30"
+                      }`}
+                    >
+                      {category === "intern" ? (
+                        <GraduationCap className="h-4 w-4" />
+                      ) : (
+                        <HardHat className="h-4 w-4" />
+                      )}
+                    </div>
+
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-foreground truncate">{p.full_name}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground">({p.admission_number})</span>
+                        <Badge
+                          variant="outline"
+                          className={`text-[9px] font-bold uppercase px-1 py-0 ${
+                            category === "intern"
+                              ? "border-indigo-500/30 text-indigo-600"
+                              : "border-blue-500/30 text-blue-600"
+                          }`}
+                        >
+                          {category}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {org} • Expiry: <strong>{new Date(p.expires_at).toLocaleDateString()}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <Badge
+                      className={`text-[10px] font-bold px-2 py-0.5 ${
+                        isPast
+                          ? "bg-destructive text-destructive-foreground"
+                          : "bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30"
+                      }`}
+                    >
+                      {isPast ? `Expired ${Math.abs(diffDays)}d ago` : `Expires in ${diffDays}d`}
+                    </Badge>
+
+                    {/* 1-Click Renew Action Button */}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOpenRenewal(p)}
+                      className="h-7 text-xs font-semibold gap-1 hover:border-red-600/40 hover:text-red-600"
+                    >
+                      <CalendarClock className="h-3 w-3" />
+                      Renew / Extend
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-1 text-xs text-muted-foreground border-t border-border/50">
+          <span>Non-valid credentials are automatically denied at the gate turnstile.</span>
+          <Link to="/personnel" className="text-primary hover:underline font-semibold flex items-center gap-1">
+            Manage all pass records <ChevronRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      </div>
+
+      {/* ── Charts ── */}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl border border-border bg-card p-5 shadow-sm lg:col-span-2">
           <h2 className="mb-3 text-sm font-semibold">{t("dash.chart_hourly")}</h2>
@@ -238,6 +456,7 @@ function Dashboard() {
         </ResponsiveContainer>
       </div>
 
+      {/* ── Live Scans Stream ── */}
       <div className="rounded-xl border border-border bg-card shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="font-semibold">{t("dash.live_title")}</h2>
@@ -263,6 +482,14 @@ function Dashboard() {
           ))}
         </div>
       </div>
+
+      {/* ── Pass Renewal & Extension Dialog (Task 8.2) ── */}
+      <PassRenewalModal
+        open={renewalOpen}
+        onOpenChange={setRenewalOpen}
+        person={renewalPerson}
+        onSuccess={() => refetchExpiries()}
+      />
     </div>
   );
 }

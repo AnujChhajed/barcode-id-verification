@@ -12,14 +12,15 @@ import {
   WifiOff, Wifi, RefreshCw, ArrowDownToLine, ArrowUpFromLine,
   ChevronDown, ChevronUp, Upload, Clock, QrCode, Keyboard,
   Search, ShieldOff, ShieldAlert, UserPlus, Activity,
-  Maximize2, Minimize2, X, AlertOctagon, Eye, Pencil, Flag,
+  Maximize2, Minimize2, X, AlertOctagon, Eye, Pencil, Flag, Building2,
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Quagga from "@ericblade/quagga2";
 import {
   cacheStudents, findCachedStudent, cachedStudentCount,
-  enqueueScan, pendingQueue, clearQueueItem,
-  type CachedStudent, type QueuedScan,
+  cacheWatchlist, findCachedWatchlistHit, cachedWatchlistCount,
+  enqueueScan, pendingQueue, clearQueueItem, markQueueItemFailed,
+  type CachedStudent, type CachedWatchlistItem, type QueuedScan,
 } from "@/lib/offline";
 import { toast } from "sonner";
 
@@ -111,6 +112,7 @@ function VerifyPage() {
   const [online,      setOnline]     = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const [queueCount,  setQueueCount] = useState(0);
   const [cachedCount, setCachedCount]= useState(0);
+  const [cachedWlCount, setCachedWlCount] = useState(0);
   const [queueOpen,   setQueueOpen]  = useState(false);
   const [queueItems,  setQueueItems] = useState<QueuedScan[]>([]);
   const [cameraFlash, setCameraFlash]= useState(false);
@@ -166,6 +168,14 @@ function VerifyPage() {
     queryFn: async () =>
       (await supabase.from("gates").select("id,name").eq("is_active", true).order("name")).data ?? [],
   });
+
+  const plant3Gate = gates?.find((g) => g.name.toLowerCase().includes("plant 3")) ?? gates?.[0];
+
+  useEffect(() => {
+    if (plant3Gate && (!gateId || gateId !== plant3Gate.id)) {
+      setGateId(plant3Gate.id);
+    }
+  }, [plant3Gate, gateId]);
 
   const { data: settings } = useQuery({
     queryKey: ["scan-settings"],
@@ -232,18 +242,29 @@ function VerifyPage() {
     setQueueCount(items.length);
     setQueueItems(items);
     setCachedCount(await cachedStudentCount());
+    setCachedWlCount(await cachedWatchlistCount());
   };
 
   const syncStudents = async () => {
-    toast.info("Caching students for offline use…");
-    const { data } = await supabase.from("students").select(
-      "id,full_name,admission_number,barcode,programme,nta_level,year_of_study,status,photo_url,expires_at,is_visitor,parent_email,parent_phone,suspension_reason,suspended_until",
-    );
-    if (data) {
-      await cacheStudents(data as CachedStudent[]);
-      toast.success(`Cached ${data.length} students offline`);
-      refreshOfflineCounts();
+    toast.info("Caching personnel & active watchlist for offline use…");
+    const [personnelRes, watchlistRes] = await Promise.all([
+      supabase.from("students").select(
+        "id,full_name,admission_number,barcode,programme,nta_level,year_of_study,status,photo_url,expires_at,is_visitor,parent_email,parent_phone,suspension_reason,suspended_until,category,company_name,institution,plant_id,valid_from",
+      ),
+      supabase.from("watchlist").select("*").eq("is_active", true),
+    ]);
+
+    let msg = "";
+    if (personnelRes.data) {
+      await cacheStudents(personnelRes.data as CachedStudent[]);
+      msg += `Cached ${personnelRes.data.length} personnel`;
     }
+    if (watchlistRes.data) {
+      await cacheWatchlist(watchlistRes.data as CachedWatchlistItem[]);
+      msg += (msg ? " & " : "Cached ") + `${watchlistRes.data.length} active watchlist items`;
+    }
+    toast.success(msg || "Offline cache updated");
+    refreshOfflineCounts();
   };
 
   const toggleQueue = async () => {
@@ -258,29 +279,86 @@ function VerifyPage() {
   const flushQueue = async () => {
     const items = await pendingQueue();
     if (!items.length) return;
-    toast.info(`Syncing ${items.length} queued scans…`);
+    toast.info(`Syncing ${items.length} queued offline scans…`);
+    let synced = 0;
+    let failed = 0;
+
     for (const item of items) {
-      const { id, ...payload } = item;
-      const { error } = await supabase.from("access_logs").insert(payload as any);
-      if (!error && id) await clearQueueItem(id);
+      const syncNote = item.operator_note || `[OFFLINE_SYNC] Scanned offline at ${item.scanned_at} (Sync-ID: ${item.sync_id || "N/A"})`;
+      const insertPayload = {
+        scanned_code: item.scanned_code,
+        student_id: item.student_id,
+        decision: item.decision,
+        reason: item.reason,
+        scanned_by: item.scanned_by,
+        scanned_at: item.scanned_at,
+        direction: item.direction,
+        gate_id: item.gate_id,
+        operator_note: syncNote,
+      };
+
+      const { error } = await supabase.from("access_logs").insert(insertPayload as any);
+      if (!error) {
+        synced++;
+        if (item.id) await clearQueueItem(item.id);
+      } else {
+        failed++;
+        console.error("Failed to sync queued scan item:", error);
+        if (item.id) await markQueueItemFailed(item.id, error.message);
+      }
     }
+
     refreshOfflineCounts();
-    toast.success("Queue synced");
+    if (failed > 0) {
+      toast.warning(`Synced ${synced} scans; ${failed} failed and remain queued for retry.`);
+    } else {
+      toast.success(`Successfully synced all ${synced} offline scans to gate access logs.`);
+    }
   };
 
   // ── Audio feedback ──
   const beep = (ok: boolean) => {
     try {
       audioCtxRef.current ||= new (window.AudioContext || (window as any).webkitAudioContext)();
-      const ctx  = audioCtxRef.current!;
-      const osc  = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.value = ok ? 880 : 220;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + (ok ? 0.18 : 0.4));
-      osc.start(); osc.stop(ctx.currentTime + (ok ? 0.2 : 0.45));
+      const ctx = audioCtxRef.current!;
+      const now = ctx.currentTime;
+      if (ok) {
+        // High ascending double-chime for Access Granted
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain1 = ctx.createGain();
+        const gain2 = ctx.createGain();
+
+        osc1.type = "sine";
+        osc1.frequency.setValueAtTime(659.25, now); // E5
+        gain1.gain.setValueAtTime(0.2, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+        osc1.connect(gain1);
+        gain1.connect(ctx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.12);
+
+        osc2.type = "sine";
+        osc2.frequency.setValueAtTime(880, now + 0.12); // A5
+        gain2.gain.setValueAtTime(0.25, now + 0.12);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+        osc2.connect(gain2);
+        gain2.connect(ctx.destination);
+        osc2.start(now + 0.12);
+        osc2.stop(now + 0.32);
+      } else {
+        // Urgent low buzzer tone for Access Denied
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(160, now);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.45);
+      }
     } catch {/* ignore */}
   };
 
@@ -322,177 +400,188 @@ function VerifyPage() {
 
     setBusy(true);
     try {
-      // ── Lockdown ──────────────────────────────────────────────────────────
-      if (lockdown) {
-        const lockReason = "Emergency lockdown — access suspended";
-        const logPayload = {
-          scanned_code: scanned, student_id: null, decision: "denied" as Decision,
-          reason: lockReason, scanned_by: user?.id ?? null,
-          scanned_at: new Date().toISOString(), direction, gate_id: gateId || null,
-        };
-        if (online) await supabase.from("access_logs").insert(logPayload as any);
-        else        await enqueueScan(logPayload as any);
-        lastScanRef.current = { code: scanned, at: Date.now() };
-        const r: Result = { decision: "denied", reason: lockReason, scannedCode: scanned, scannedAt: new Date(), direction };
-        setResult(r); setRecent((p) => [r, ...p].slice(0, 10));
-        setSessionStats((s) => ({ ...s, denied: s.denied + 1 }));
-        beep(false); return;
-      }
-
-      // ── Time-based access ─────────────────────────────────────────────────
-      if (accessEnabled) {
-        const now         = new Date();
-        const day         = now.getDay();
-        const currentTime = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-        if (!accessDays.includes(day) || currentTime < accessStart || currentTime >= accessEnd) {
-          const closedReason = `Gate closed · access hours ${accessStart}–${accessEnd}`;
-          const logPayload   = {
-            scanned_code: scanned, student_id: null, decision: "denied" as Decision,
-            reason: closedReason, scanned_by: user?.id ?? null,
-            scanned_at: new Date().toISOString(), direction, gate_id: gateId || null,
-          };
-          if (online) await supabase.from("access_logs").insert(logPayload as any);
-          else        await enqueueScan(logPayload as any);
-          lastScanRef.current = { code: scanned, at: Date.now() };
-          const r: Result = { decision: "denied", reason: closedReason, scannedCode: scanned, scannedAt: new Date(), direction };
-          setResult(r); setRecent((p) => [r, ...p].slice(0, 10));
-          setSessionStats((s) => ({ ...s, denied: s.denied + 1 }));
-          beep(false); return;
-        }
-      }
-
-      // ── Student lookup ────────────────────────────────────────────────────
-      let student: CachedStudent | null = null;
       if (online) {
-        const { data } = await supabase
-          .from("students")
-          .select("*")
-          .or(`barcode.eq.${scanned},admission_number.eq.${scanned}`)
-          .maybeSingle();
-        student = (data as CachedStudent | null) ?? null;
-      } else {
-        student = await findCachedStudent(scanned);
-      }
+        // ── Authoritative Backend Verification RPC ────────────────────────────
+        const targetGateId = gateId || plant3Gate?.id || null;
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc("verify_gate_access", {
+          p_code: scanned,
+          p_gate_id: targetGateId,
+          p_direction: direction,
+          p_operator_note: null,
+        });
 
-      let decision: Decision = "unknown";
-      let reason: string | undefined;
-      let photoUrl: string | null = null;
-      const isPassExpired = (exp: string) => {
-        const parsed = exp.length <= 10 ? new Date(`${exp}T23:59:59`) : new Date(exp);
-        return parsed < new Date();
-      };
-
-      if (!student) {
-        decision = "unknown";
-        reason   = online ? "No student matches this code" : "Offline · not in cache";
-      } else if (student.status === "suspended") {
-        const until = student.suspended_until;
-        if (until && new Date(until) < new Date()) {
-          decision = "allowed";
-        } else {
-          decision = "denied";
-          reason   = student.suspension_reason ? `Suspended: ${student.suspension_reason}` : "Student is suspended";
-          if (until) reason += ` · until ${until}`;
+        if (rpcErr) {
+          throw new Error(rpcErr.message || "Gate access verification RPC failed");
         }
-      } else if (student.status !== "active") {
-        decision = "denied";
-        reason   = `Student is ${student.status}`;
-      } else if (student.expires_at && isPassExpired(student.expires_at)) {
-        decision = "denied";
-        reason   = `Pass expired ${student.expires_at}`;
-      } else {
-        decision = "allowed";
-      }
 
-      // ── Watchlist check ───────────────────────────────────────────────────
-      // Even if the student is otherwise allowed, a watchlist match may
-      // override the decision (deny/detain) or add a visible warning (info/warn).
-      let watchlistHit: WatchlistHit | undefined;
-      if (online) {
-        const now = new Date().toISOString();
-        const { data: wl } = await supabase
-          .from("watchlist")
-          .select("alert_level,full_name,reason,description,photo_url")
-          .eq("is_active", true)
-          .or(`expires_at.is.null,expires_at.gt.${now}`)
-          .or(`barcode.eq.${scanned},id_number.eq.${scanned}`)
-          .limit(1)
-          .maybeSingle();
-        if (wl) {
-          // Resolve signed URL for the photo if present
+        const res = rpcRes as any;
+        const decision: Decision = (res?.decision as Decision) ?? "unknown";
+        const reason: string | undefined = res?.reason ?? undefined;
+        const logId: string | null = res?.log_id ?? null;
+        const personData = res?.person ?? null;
+        const wlData = res?.watchlist_hit ?? null;
+
+        let photoUrl: string | null = null;
+        if (personData?.photo_url) {
+          const { data: signed } = await supabase.storage
+            .from("student-photos")
+            .createSignedUrl(personData.photo_url, 60);
+          photoUrl = signed?.signedUrl ?? null;
+        }
+
+        let watchlistHit: WatchlistHit | undefined;
+        if (wlData) {
           let photoSrc: string | null = null;
-          if (wl.photo_url) {
+          if (wlData.photo_url) {
             const { data: signed } = await supabase.storage
               .from("student-photos")
-              .createSignedUrl(wl.photo_url, 120);
+              .createSignedUrl(wlData.photo_url, 120);
             photoSrc = signed?.signedUrl ?? null;
           }
           watchlistHit = {
-            alert_level: wl.alert_level,
-            full_name:   wl.full_name,
-            reason:      wl.reason,
-            description: wl.description ?? null,
-            photo_url:   wl.photo_url ?? null,
+            alert_level: wlData.alert_level,
+            full_name:   wlData.full_name,
+            reason:      wlData.reason,
+            description: wlData.description ?? null,
+            photo_url:   wlData.photo_url ?? null,
             photoSrc,
           };
-          // deny / detain — force denial regardless of student status
-          if (wl.alert_level === "deny" || wl.alert_level === "detain") {
+        }
+
+        const mappedStudent: CachedStudent | undefined = personData ? {
+          id: personData.id,
+          full_name: personData.full_name,
+          admission_number: personData.admission_number,
+          barcode: personData.barcode,
+          programme: personData.company_name || personData.institution || personData.programme || "",
+          nta_level: "",
+          year_of_study: 1,
+          status: personData.status,
+          photo_url: personData.photo_url,
+          expires_at: personData.expires_at,
+          is_visitor: personData.is_visitor ?? (personData.category === "visitor"),
+          parent_email: null,
+          parent_phone: null,
+          suspension_reason: null,
+          suspended_until: null,
+          category: personData.category,
+          company_name: personData.company_name,
+          institution: personData.institution,
+          plant_id: personData.plant_id,
+          valid_from: personData.valid_from,
+        } : undefined;
+
+        lastScanRef.current = { code: scanned, at: Date.now() };
+        const r: Result = {
+          decision,
+          reason,
+          student: mappedStudent,
+          photoUrl,
+          scannedCode: scanned,
+          scannedAt: new Date(),
+          direction,
+          logId,
+          watchlistHit,
+        };
+        setResult(r);
+        setRecent((p) => [r, ...p].slice(0, 10));
+        setSessionStats((s) => ({ ...s, [decision]: s[decision] + 1 }));
+        beep(decision === "allowed");
+      } else {
+        // ── Offline fallback (Cached evaluation & offline queue) ─────────────
+        const wlHit = await findCachedWatchlistHit(scanned);
+        let watchlistHit: WatchlistHit | undefined;
+        let decision: Decision = "unknown";
+        let reason: string | undefined;
+        let matchedStudent: CachedStudent | null = null;
+
+        if (wlHit) {
+          decision = "denied";
+          reason = `WATCHLIST ALERT [${wlHit.alert_level.toUpperCase()}]: ${wlHit.reason}`;
+          watchlistHit = {
+            alert_level: wlHit.alert_level,
+            full_name:   wlHit.full_name,
+            reason:      wlHit.reason,
+            description: wlHit.description ?? null,
+            photo_url:   wlHit.photo_url ?? null,
+            photoSrc:    null,
+          };
+        } else if (lockdown) {
+          decision = "denied";
+          reason = "Emergency lockdown — access suspended";
+        } else {
+          matchedStudent = await findCachedStudent(scanned);
+          if (!matchedStudent) {
+            decision = "unknown";
+            reason = "Offline · Not in Plant 3 local cache";
+          } else if (matchedStudent.plant_id && matchedStudent.plant_id !== "Plant 3") {
             decision = "denied";
-            reason   = `WATCHLIST (${wl.alert_level.toUpperCase()}): ${wl.reason}`;
+            reason = `Plant access denied: Assigned to ${matchedStudent.plant_id}`;
+          } else if (matchedStudent.status === "suspended") {
+            const until = matchedStudent.suspended_until;
+            if (until && new Date(until) < new Date()) {
+              decision = "allowed";
+            } else {
+              decision = "denied";
+              reason = matchedStudent.suspension_reason ? `Suspended: ${matchedStudent.suspension_reason}` : "Person is suspended";
+              if (until) reason += ` · until ${until}`;
+            }
+          } else if (matchedStudent.status !== "active") {
+            decision = "denied";
+            reason = `Status is ${matchedStudent.status}`;
+          } else if (matchedStudent.expires_at && new Date(matchedStudent.expires_at) < new Date()) {
+            decision = "denied";
+            reason = `Pass expired ${matchedStudent.expires_at}`;
+          } else {
+            decision = "allowed";
           }
         }
-      }
 
-      if (online && student?.photo_url) {
-        const { data: signed } = await supabase.storage
-          .from("student-photos")
-          .createSignedUrl(student.photo_url, 60);
-        photoUrl = signed?.signedUrl ?? null;
-      }
+        const syncId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `offline_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+        const logPayload: QueuedScan = {
+          sync_id: syncId,
+          scanned_code: scanned,
+          student_id: matchedStudent?.id ?? null,
+          decision,
+          reason: reason ?? null,
+          scanned_by: user?.id ?? null,
+          scanned_at: new Date().toISOString(),
+          direction,
+          gate_id: gateId || plant3Gate?.id || null,
+          is_offline: true,
+          operator_note: `[OFFLINE GATE SCAN] Evaluated locally offline at Plant 3 Main Gate (Sync-ID: ${syncId})`,
+          sync_status: "pending",
+        };
 
-      const logPayload = {
-        scanned_code: scanned, student_id: student?.id ?? null,
-        decision, reason: reason ?? null,
-        scanned_by: user?.id ?? null,
-        scanned_at: new Date().toISOString(),
-        direction, gate_id: gateId || null,
-      };
-
-      let insertedLogId: string | null = null;
-      if (online) {
-        const { data: logRow } = await supabase
-          .from("access_logs")
-          .insert(logPayload as any)
-          .select("id")
-          .single();
-        insertedLogId = logRow?.id ?? null;
-
-        if (decision === "denied" && student?.parent_email) {
-          supabase.functions.invoke("notify-parent", {
-            body: { student_id: student.id, log_id: insertedLogId, reason: reason ?? null, scanned_at: logPayload.scanned_at },
-          }).catch(() => {});
-        }
-      } else {
-        await enqueueScan(logPayload as any);
+        await enqueueScan(logPayload);
         refreshOfflineCounts();
-      }
 
-      lastScanRef.current = { code: scanned, at: Date.now() };
-      const r: Result = {
-        decision, reason, student: student ?? undefined,
-        photoUrl, scannedCode: scanned, scannedAt: new Date(), direction,
-        logId: insertedLogId, watchlistHit,
-      };
-      setResult(r);
-      setRecent((p) => [r, ...p].slice(0, 10));
-      setSessionStats((s) => ({ ...s, [decision]: s[decision] + 1 }));
-      beep(decision === "allowed");
+        lastScanRef.current = { code: scanned, at: Date.now() };
+        const r: Result = {
+          decision,
+          reason,
+          student: matchedStudent ?? undefined,
+          photoUrl: null,
+          scannedCode: scanned,
+          scannedAt: new Date(),
+          direction,
+          logId: null,
+          watchlistHit,
+        };
+
+        setResult(r);
+        setRecent((p) => [r, ...p].slice(0, 10));
+        setSessionStats((s) => ({ ...s, [decision]: s[decision] + 1 }));
+        beep(decision === "allowed");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Verification failed");
     } finally {
       setBusy(false);
       setCode("");
       if (scanMode === "scanner") setTimeout(() => inputRef.current?.focus(), 0);
     }
-  }, [online, user?.id, direction, gateId, antiPassbackSec, accessEnabled, accessStart, accessEnd, accessDays, scanMode, lockdown]);
+  }, [online, user?.id, direction, gateId, plant3Gate?.id, antiPassbackSec, lockdown, scanMode]);
 
   useEffect(() => { verifyRef.current = verify; }, [verify]);
 
@@ -771,7 +860,9 @@ function VerifyPage() {
               {queueCount} {t("verify.queued")}
             </button>
           )}
-          <span className="rounded-full bg-secondary px-2 py-1 text-xs text-muted-foreground">{cachedCount} {t("verify.cached")}</span>
+          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs text-muted-foreground font-medium">
+            {cachedCount} {t("verify.cached")}{cachedWlCount > 0 ? ` · ${cachedWlCount} watchlist` : ""}
+          </span>
           <Button size="sm" variant="outline" onClick={syncStudents} disabled={!online}>
             <RefreshCw className="mr-1 h-3 w-3" /> {t("verify.sync")}
           </Button>
@@ -803,15 +894,23 @@ function VerifyPage() {
           </button>
         </div>
 
-        {/* Gate selector */}
-        <div className="min-w-[180px] flex-1">
-          <Select value={gateId || "none"} onValueChange={(v) => setGateId(v === "none" ? "" : v)}>
-            <SelectTrigger><SelectValue placeholder={t("verify.select_gate")} /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">{t("verify.no_gate")}</SelectItem>
-              {(gates ?? []).map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-            </SelectContent>
-          </Select>
+        {/* Plant 3 Single Gate Lock */}
+        <div className="flex min-w-[220px] flex-1 items-center justify-between rounded-lg border border-border bg-secondary/40 px-3.5 py-2">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-8 w-8 place-items-center rounded-md bg-primary/10 text-primary">
+              <Building2 className="h-4 w-4" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-foreground">
+                {plant3Gate?.name ?? "Plant 3 - Main Gate"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">ABB Plant 3 Dedicated Gate</p>
+            </div>
+          </div>
+          <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+            Active
+          </span>
         </div>
 
         {/* Lockdown toggle */}
@@ -1206,17 +1305,23 @@ function VerifyPage() {
           ) : (
             <div className="divide-y divide-warning/10 max-h-72 overflow-y-auto">
               {queueItems.map((item, i) => (
-                <div key={item.id ?? i} className="flex items-center gap-3 px-5 py-2.5 text-sm">
+                <div key={item.id ?? item.sync_id ?? i} className="flex items-center gap-3 px-5 py-2.5 text-sm">
                   {item.decision === "allowed"
                     ? <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
                     : item.decision === "denied"
                     ? <XCircle className="h-4 w-4 shrink-0 text-destructive" />
                     : <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
                   }
-                  <span className="rounded bg-secondary px-1.5 text-[10px] uppercase text-muted-foreground">{item.direction ?? "—"}</span>
+                  <span className="rounded bg-amber-500/15 text-amber-600 font-semibold px-1.5 py-0.5 text-[9px] uppercase tracking-wider">OFFLINE</span>
+                  <span className="rounded bg-secondary px-1.5 text-[10px] uppercase font-bold text-muted-foreground">{item.direction ?? "—"}</span>
                   <span className="flex-1 min-w-0 truncate font-mono text-xs">{item.scanned_code}</span>
                   {item.reason && <span className="text-xs text-muted-foreground truncate max-w-[180px]">{item.reason}</span>}
-                  <span className="shrink-0 text-xs text-muted-foreground">
+                  {item.sync_status === "failed" && (
+                    <span className="text-[10px] text-destructive bg-destructive/10 px-1.5 py-0.5 rounded font-medium truncate max-w-[120px]" title={item.sync_error || "Sync error"}>
+                      Retry Pending
+                    </span>
+                  )}
+                  <span className="shrink-0 text-xs text-muted-foreground font-mono">
                     {new Date(item.scanned_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </span>
                 </div>
@@ -1242,6 +1347,104 @@ function VerifyPage() {
           }}
         />
       )}
+
+      {/* ── High-Visibility Latest Decision Banner ── */}
+      {recent.length > 0 && (() => {
+        const latest = recent[0];
+        const isOk = latest.decision === "allowed";
+        const isDeny = latest.decision === "denied";
+        const bannerBorder = isOk
+          ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-950 dark:text-emerald-50"
+          : isDeny
+          ? "border-red-500/50 bg-red-500/10 text-red-950 dark:text-red-50"
+          : "border-amber-500/50 bg-amber-500/10 text-amber-950 dark:text-amber-50";
+
+        const badgeBg = isOk
+          ? "bg-emerald-600 text-white"
+          : isDeny
+          ? "bg-red-600 text-white"
+          : "bg-amber-600 text-white";
+
+        const BannerIcon = isOk ? CheckCircle2 : isDeny ? XCircle : AlertTriangle;
+
+        return (
+          <div className={`overflow-hidden rounded-2xl border-2 p-5 shadow-lg transition-all animate-in fade-in ${bannerBorder}`}>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className={`grid h-16 w-16 place-items-center rounded-2xl ${badgeBg} shadow-md shrink-0`}>
+                  <BannerIcon className="h-10 w-10 text-white stroke-[2.5]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <span className={`rounded-md px-3 py-1 text-sm font-black uppercase tracking-wider ${badgeBg}`}>
+                      {isOk ? "ACCESS GRANTED" : isDeny ? "ACCESS DENIED" : "UNABLE TO VERIFY"}
+                    </span>
+                    <span className="rounded bg-secondary/80 px-2 py-0.5 text-xs font-mono font-bold uppercase text-foreground">
+                      {latest.direction === "in" ? "ENTRY (IN)" : "EXIT (OUT)"}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-mono">
+                      {latest.scannedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-xl sm:text-2xl font-black text-foreground">
+                    {latest.student?.full_name ?? latest.scannedCode}
+                  </p>
+
+                  {latest.student && (
+                    <div className="mt-1 flex items-center gap-3 text-xs sm:text-sm text-muted-foreground flex-wrap">
+                      <span className="font-mono">{latest.student.admission_number}</span>
+                      {latest.student.category === "worker" ? (
+                        <span className="rounded bg-blue-500/15 px-2 py-0.5 text-xs font-bold uppercase text-blue-500">Contract Worker</span>
+                      ) : latest.student.category === "intern" ? (
+                        <span className="rounded bg-purple-500/15 px-2 py-0.5 text-xs font-bold uppercase text-purple-500">Internship Student</span>
+                      ) : latest.student.is_visitor ? (
+                        <span className="rounded bg-amber-500/15 px-2 py-0.5 text-xs font-bold uppercase text-amber-500">Temporary Visitor</span>
+                      ) : null}
+                      {latest.student.company_name && (
+                        <span>· Contractor: <strong className="text-foreground">{latest.student.company_name}</strong></span>
+                      )}
+                      {latest.student.institution && (
+                        <span>· Institution: <strong className="text-foreground">{latest.student.institution}</strong></span>
+                      )}
+                    </div>
+                  )}
+
+                  {isDeny && latest.reason && (
+                    <p className="mt-2 text-sm sm:text-base font-extrabold text-red-600 dark:text-red-400">
+                      Reason: {latest.reason}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex sm:flex-col items-center sm:items-end gap-2 w-full sm:w-auto justify-between sm:justify-center shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setResult(latest)}
+                  className="font-semibold text-xs border-current/30 hover:bg-black/5 dark:hover:bg-white/5"
+                >
+                  <Eye className="mr-1.5 h-3.5 w-3.5" /> View Details
+                </Button>
+                {latest.logId && isDeny && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setResult(latest);
+                      setShowOverride(true);
+                    }}
+                    className="font-semibold text-xs border-amber-500/40 text-amber-600 hover:bg-amber-500/10"
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" /> Override Access
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Recent scans ── */}
       {recent.length > 0 && !kioskMode && (
@@ -1412,91 +1615,200 @@ function ScanResultModal({
 
   const cfg =
     result.decision === "allowed"
-      ? { icon: CheckCircle2,  label: t("verify.result_granted"), headerBg: "bg-success",     headerFg: "text-success-foreground",     ring: "ring-success/40"     }
+      ? {
+          icon: CheckCircle2,
+          headline: "ACCESS GRANTED",
+          subheadline: "ABB PLANT 3 · CLEARANCE APPROVED",
+          headerBg: "bg-emerald-600 text-white",
+          ring: "ring-4 ring-emerald-500/40",
+          statusBadge: "bg-emerald-500/20 text-emerald-100 border-emerald-400/40",
+          progressBar: "bg-emerald-500",
+        }
       : result.decision === "denied"
-      ? { icon: XCircle,       label: t("verify.result_denied"),  headerBg: "bg-destructive", headerFg: "text-destructive-foreground", ring: "ring-destructive/40" }
-      : { icon: AlertTriangle, label: t("verify.result_unknown"), headerBg: "bg-warning",     headerFg: "text-warning-foreground",     ring: "ring-warning/40"     };
+      ? {
+          icon: XCircle,
+          headline: "ACCESS DENIED",
+          subheadline: "ABB PLANT 3 · GATE ACCESS REFUSED",
+          headerBg: "bg-red-600 text-white",
+          ring: "ring-4 ring-red-500/40",
+          statusBadge: "bg-red-500/20 text-red-100 border-red-400/40",
+          progressBar: "bg-red-500",
+        }
+      : {
+          icon: AlertTriangle,
+          headline: "UNABLE TO VERIFY",
+          subheadline: "UNREGISTERED CREDENTIAL · NOT IN DATABASE",
+          headerBg: "bg-amber-600 text-white",
+          ring: "ring-4 ring-amber-500/40",
+          statusBadge: "bg-amber-500/20 text-amber-100 border-amber-400/40",
+          progressBar: "bg-amber-500",
+        };
 
   const Icon = cfg.icon;
   const s    = result.student;
   const progressPct = (secs / AUTO_CLOSE) * 100;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6 bg-black/70 animate-in fade-in duration-150">
-      <div className={`w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden ring-2 ${cfg.ring} animate-in zoom-in-95 duration-200`}>
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-sm animate-in fade-in duration-150">
+      <div className={`w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden ring-2 ${cfg.ring} animate-in zoom-in-95 duration-200 bg-card border border-border`}>
 
-        {/* ── Decision header ── */}
-        <div className={`flex items-center justify-between gap-3 px-5 py-4 ${cfg.headerBg} ${cfg.headerFg}`}>
-          <div className="flex items-center gap-3">
-            <Icon className="h-7 w-7 shrink-0" />
+        {/* ── High-Visibility Decision Header ── */}
+        <div className={`flex items-center justify-between gap-4 px-6 py-5 ${cfg.headerBg} shadow-lg transition-colors`}>
+          <div className="flex items-center gap-4">
+            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-white/20 backdrop-blur-sm shrink-0">
+              <Icon className="h-9 w-9 text-white stroke-[2.5]" />
+            </div>
             <div>
-              <p className="text-xl font-extrabold tracking-tight leading-tight">{cfg.label}</p>
-              <p className="text-sm opacity-80">{result.direction === "in" ? t("verify.result_entry") : t("verify.result_exit")} · {result.scannedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-2xl sm:text-3xl font-black tracking-tight leading-none text-white">
+                  {cfg.headline}
+                </span>
+                <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-extrabold uppercase tracking-wider ${cfg.statusBadge}`}>
+                  {result.direction === "in" ? "ENTRY (IN)" : "EXIT (OUT)"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs sm:text-sm font-semibold tracking-wide text-white/90">
+                {cfg.subheadline} · {result.scannedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+              </p>
             </div>
           </div>
           <button
             onClick={onDismiss}
-            className="rounded-full p-2 hover:bg-white/20 transition-colors shrink-0"
-            title="Close (or wait for auto-close)"
+            className="rounded-full p-2 hover:bg-white/20 transition-colors text-white shrink-0"
+            title="Close"
           >
-            <X className="h-5 w-5" />
+            <X className="h-6 w-6" />
           </button>
         </div>
 
-        {/* ── Student details ── */}
-        <div className="flex gap-4 p-5 bg-card">
+        {/* ── Prominent Reason Callout Box ── */}
+        {result.decision === "denied" && (
+          <div className="mx-6 mt-5 rounded-2xl border-2 border-red-500/50 bg-red-500/10 p-4 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="flex items-start gap-3">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-red-600 text-white shrink-0 mt-0.5">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wider text-red-600 dark:text-red-400">
+                  Denial Reason (Enforced by Plant 3 Security)
+                </p>
+                <p className="mt-0.5 text-base sm:text-lg font-black text-red-700 dark:text-red-300">
+                  {result.reason || "Access denied by security verification rules"}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {result.decision === "allowed" && (
+          <div className="mx-6 mt-5 rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2.5 text-emerald-800 dark:text-emerald-200 text-sm font-bold">
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Plant 3 Clearance Granted — Single Gate Authorized</span>
+            </div>
+          </div>
+        )}
+
+        {result.decision === "unknown" && (
+          <div className="mx-6 mt-5 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 animate-in fade-in duration-200">
+            <div className="flex items-start gap-3">
+              <div className="grid h-8 w-8 place-items-center rounded-lg bg-amber-600 text-white shrink-0 mt-0.5">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                  Unrecognized Barcode or Pass
+                </p>
+                <p className="mt-0.5 text-sm sm:text-base font-bold text-amber-800 dark:text-amber-200 font-mono">
+                  {result.scannedCode}
+                </p>
+                <p className="mt-1 text-xs text-amber-700/90 dark:text-amber-300/90">
+                  No registered contractor worker, intern, or visitor matches this credential. Use Walk-in Registration or Manual Lookup.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Student / Personnel details ── */}
+        <div className="flex flex-col sm:flex-row gap-5 p-6 bg-card">
           {/* Photo */}
-          <div className="shrink-0 h-28 w-28 sm:h-36 sm:w-36 overflow-hidden rounded-xl bg-secondary ring-1 ring-border flex items-center justify-center">
-            {result.photoUrl
-              ? <img src={result.photoUrl} alt={s?.full_name ?? "Student"} className="h-full w-full object-cover" />
-              : <UserIcon className="h-14 w-14 text-muted-foreground/40" />
-            }
+          <div className="shrink-0 h-32 w-32 sm:h-36 sm:w-36 mx-auto sm:mx-0 overflow-hidden rounded-2xl bg-secondary/80 ring-2 ring-border shadow-md flex items-center justify-center">
+            {result.photoUrl ? (
+              <img src={result.photoUrl} alt={s?.full_name ?? "Personnel"} className="h-full w-full object-cover" />
+            ) : s?.full_name ? (
+              <div className="grid h-full w-full place-items-center bg-primary/10 text-primary font-black text-3xl sm:text-4xl select-none">
+                {s.full_name
+                  .split(" ")
+                  .map((p) => p[0])
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase()}
+              </div>
+            ) : (
+              <UserIcon className="h-16 w-16 text-muted-foreground/30" />
+            )}
           </div>
 
           {/* Info */}
-          <div className="flex-1 min-w-0 space-y-1.5">
+          <div className="flex-1 min-w-0 space-y-2">
             {s ? (
               <>
-                <div className="flex items-start gap-2 flex-wrap">
-                  <p className="text-xl font-bold leading-tight">{s.full_name}</p>
-                  {s.is_visitor && (
-                    <span className="shrink-0 rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-bold uppercase text-warning">{t("verify.result_visitor")}</span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xl sm:text-2xl font-black text-foreground tracking-tight">{s.full_name}</h3>
+                  {s.category === "worker" ? (
+                    <span className="shrink-0 rounded-md bg-blue-600 px-2.5 py-0.5 text-xs font-bold uppercase text-white shadow-sm">
+                      Contract Worker
+                    </span>
+                  ) : s.category === "intern" ? (
+                    <span className="shrink-0 rounded-md bg-purple-600 px-2.5 py-0.5 text-xs font-bold uppercase text-white shadow-sm">
+                      Internship Student
+                    </span>
+                  ) : s.is_visitor || s.category === "visitor" ? (
+                    <span className="shrink-0 rounded-md bg-amber-600 px-2.5 py-0.5 text-xs font-bold uppercase text-white shadow-sm">
+                      Temporary Visitor
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3 text-xs sm:text-sm text-muted-foreground font-mono">
+                  <span className="font-bold text-foreground">ID: {s.admission_number}</span>
+                  {s.barcode && s.barcode !== s.admission_number && (
+                    <span>· Barcode: {s.barcode}</span>
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground font-mono">{s.admission_number}</p>
-                {s.programme && (
+                {s.company_name && (
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Building2 className="h-4 w-4 text-primary shrink-0" />
+                    <span>Contractor: <strong className="text-foreground">{s.company_name}</strong></span>
+                  </div>
+                )}
+                {s.institution && (
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <Building2 className="h-4 w-4 text-primary shrink-0" />
+                    <span>Institution: <strong className="text-foreground">{s.institution}</strong></span>
+                  </div>
+                )}
+                {!s.company_name && !s.institution && s.programme && (
                   <p className="text-sm text-foreground">{s.programme}</p>
                 )}
-                {(s.nta_level || s.year_of_study) && (
-                  <p className="text-xs text-muted-foreground">
-                    {s.nta_level    && `NTA Level ${s.nta_level}`}
-                    {s.nta_level && s.year_of_study && " · "}
-                    {s.year_of_study && `Year ${s.year_of_study}`}
-                  </p>
-                )}
-                <p className="text-xs">
-                  <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                    s.status === "active"    ? "bg-success/15 text-success"     :
-                    s.status === "suspended" ? "bg-destructive/15 text-destructive" :
+                <div className="flex items-center gap-3 flex-wrap pt-1 text-xs">
+                  {(s.valid_from || s.expires_at) && (
+                    <span className="rounded bg-secondary px-2 py-1 text-muted-foreground font-mono">
+                      Validity: {s.valid_from ? s.valid_from.slice(0, 10) : "Immediate"} – {s.expires_at ? s.expires_at.slice(0, 10) : "Open"}
+                    </span>
+                  )}
+                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold uppercase ${
+                    s.status === "active"    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" :
+                    s.status === "suspended" ? "bg-red-500/15 text-red-600 dark:text-red-400" :
                                               "bg-secondary text-muted-foreground"
                   }`}>{s.status}</span>
-                </p>
+                </div>
               </>
             ) : (
-              <div className="space-y-1">
-                <p className="text-base font-semibold text-muted-foreground">{t("verify.result_no_record")}</p>
+              <div className="space-y-1.5 py-2">
+                <p className="text-lg font-bold text-muted-foreground">{t("verify.result_no_record")}</p>
                 <p className="text-xs font-mono text-muted-foreground">{result.scannedCode}</p>
-              </div>
-            )}
-
-            {/* Reason */}
-            {result.reason && (
-              <div className={`mt-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                result.decision === "denied"  ? "bg-destructive/10 text-destructive" :
-                result.decision === "unknown" ? "bg-warning/10 text-warning"         :
-                                               "bg-success/10 text-success"
-              }`}>
-                {result.reason}
               </div>
             )}
           </div>

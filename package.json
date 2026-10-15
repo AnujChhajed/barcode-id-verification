@@ -1,5 +1,7 @@
 {
-  "name": "tanstack_start_ts",
+  "name": "abb-plant3-security-gate",
+  "version": "1.0.0",
+  "description": "ABB Plant 3 Security, Gate Verification, Canteen, and Personnel Management System",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -8,6 +10,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
+    "test": "node --test tests/regression-suite.test.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

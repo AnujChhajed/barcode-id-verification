@@ -105,12 +105,6 @@ function Landing() {
             <a href="#features" className="text-sm text-muted-foreground transition-colors hover:text-foreground">{t("landing.nav_features")}</a>
             <a href="#how-it-works" className="text-sm text-muted-foreground transition-colors hover:text-foreground">{t("landing.nav_how")}</a>
             <a href="#access" className="text-sm text-muted-foreground transition-colors hover:text-foreground">{t("landing.nav_access")}</a>
-            <Link
-              to="/check"
-              className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {t("landing.nav_check")}
-            </Link>
           </nav>
 
           <LanguageSwitcher />
@@ -166,11 +160,11 @@ function Landing() {
                 <ArrowRight className="h-4 w-4 text-muted-foreground" />
               </Link>
               <Link
-                to="/check"
+                to="/login"
                 className="inline-flex items-center gap-2 rounded-xl border border-primary-foreground/30 px-5 py-3 text-sm font-semibold text-primary-foreground transition-all hover:bg-primary-foreground/10"
               >
-                <QrCode className="h-4 w-4" />
-                {t("landing.hero_check")}
+                <Lock className="h-4 w-4" />
+                Plant 3 Gate Portal
               </Link>
             </div>
 
@@ -415,12 +409,6 @@ function Landing() {
               >
                 <ShieldCheck className="h-4 w-4 text-primary" /> {t("landing.cta_login")}
               </Link>
-              <Link
-                to="/check"
-                className="inline-flex items-center gap-2 rounded-xl border border-primary-foreground/30 px-6 py-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary-foreground/10"
-              >
-                <QrCode className="h-4 w-4" /> {t("landing.cta_check")}
-              </Link>
             </div>
           </div>
         </section>
@@ -454,7 +442,6 @@ function Landing() {
               <ul className="space-y-2">
                 {[
                   { to: "/login", label: t("landing.footer_link_login") },
-                  { to: "/check", label: t("landing.footer_link_check") },
                   { href: "#features",     label: t("landing.footer_link_feat") },
                   { href: "#how-it-works", label: t("landing.footer_link_how") },
                 ].map((link) => (

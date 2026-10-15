@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -21,37 +21,46 @@ import {
 } from "lucide-react";
 
 /* ─────────────────────────────────────────────────────────────────────────
-   Target student columns + header aliases for smart auto-mapping.
+   Target student/worker/intern columns + header aliases for smart auto-mapping.
    Only `full_name` is required — everything else is optional and, for the
    admission number / barcode, auto-generated when missing.
    ───────────────────────────────────────────────────────────────────────── */
 const NONE = "__none__";
 
 type Target =
-  | "full_name" | "admission_number" | "barcode" | "programme" | "nta_level"
-  | "year_of_study" | "status" | "expires_at" | "parent_email" | "parent_phone" | "notes";
+  | "full_name" | "category" | "admission_number" | "barcode" | "company_name"
+  | "institution" | "programme" | "valid_from" | "expires_at" | "status"
+  | "nta_level" | "year_of_study" | "parent_email" | "parent_phone" | "notes";
 
 const TARGETS: { key: Target; label: string; required?: boolean; aliases: string[] }[] = [
   { key: "full_name",        label: "Full name",     required: true,
-    aliases: ["full_name", "fullname", "name", "names", "student_name", "studentname", "student"] },
-  { key: "admission_number", label: "Admission no.",
-    aliases: ["admission_number", "admissionno", "admission", "admno", "reg_no", "regno", "registration", "registration_number", "index_number", "indexno", "index", "matric", "student_id", "studentid"] },
-  { key: "barcode",          label: "Barcode",
-    aliases: ["barcode", "bar_code", "card", "card_number", "cardno", "qr", "code"] },
-  { key: "programme",        label: "Programme",
-    aliases: ["programme", "program", "course", "department", "dept", "major", "class"] },
-  { key: "nta_level",        label: "NTA level",
-    aliases: ["nta_level", "ntalevel", "nta", "level"] },
-  { key: "year_of_study",    label: "Year of study",
-    aliases: ["year_of_study", "yearofstudy", "year", "yos", "yr", "study_year"] },
+    aliases: ["full_name", "fullname", "name", "names", "student_name", "studentname", "worker_name", "person_name", "employee"] },
+  { key: "category",         label: "Category",
+    aliases: ["category", "type", "role_type", "person_type", "worker_type", "personnel_type"] },
+  { key: "admission_number", label: "Worker / Intern ID",
+    aliases: ["admission_number", "admissionno", "admission", "admno", "reg_no", "regno", "registration", "registration_number", "index_number", "indexno", "index", "matric", "student_id", "studentid", "worker_id", "intern_id", "id_number", "id"] },
+  { key: "barcode",          label: "Barcode / Badge",
+    aliases: ["barcode", "bar_code", "card", "card_number", "cardno", "qr", "code", "badge_number", "badge"] },
+  { key: "company_name",     label: "Company / Contractor",
+    aliases: ["company_name", "company", "contractor", "agency", "employer", "vendor"] },
+  { key: "institution",      label: "College / University",
+    aliases: ["institution", "college", "university", "school", "institute", "campus", "faculty"] },
+  { key: "programme",        label: "Department / Role",
+    aliases: ["programme", "program", "course", "department", "dept", "major", "class", "role", "trade"] },
+  { key: "valid_from",       label: "Valid from",
+    aliases: ["valid_from", "validfrom", "start_date", "start", "from_date", "from", "effective_date"] },
+  { key: "expires_at",       label: "Expiry date",
+    aliases: ["expires_at", "expiry", "expires", "valid_until", "validuntil", "expiration", "expiry_date", "end_date", "end"] },
   { key: "status",           label: "Status",
     aliases: ["status", "state"] },
-  { key: "expires_at",       label: "Expiry date",
-    aliases: ["expires_at", "expiry", "expires", "valid_until", "validuntil", "expiration", "expiry_date"] },
-  { key: "parent_email",     label: "Parent email",
-    aliases: ["parent_email", "guardian_email", "email", "parentemail"] },
-  { key: "parent_phone",     label: "Parent phone",
-    aliases: ["parent_phone", "guardian_phone", "phone", "mobile", "contact", "parentphone", "msisdn"] },
+  { key: "nta_level",        label: "Skill / NTA level",
+    aliases: ["nta_level", "ntalevel", "nta", "level", "skill_level", "tier"] },
+  { key: "year_of_study",    label: "Year / Term",
+    aliases: ["year_of_study", "yearofstudy", "year", "yos", "yr", "study_year", "term", "shift"] },
+  { key: "parent_email",     label: "Contact email",
+    aliases: ["parent_email", "guardian_email", "email", "parentemail", "supervisor_email", "contact_email"] },
+  { key: "parent_phone",     label: "Contact phone",
+    aliases: ["parent_phone", "guardian_phone", "phone", "mobile", "contact", "parentphone", "msisdn", "supervisor_phone", "emergency_phone"] },
   { key: "notes",            label: "Notes",
     aliases: ["notes", "note", "remark", "remarks", "comment", "comments"] },
 ];
@@ -115,7 +124,7 @@ function detectAndParse(text: string, filename?: string, contentType?: string): 
 
   // Single column → a plain list of names, one per line.
   const lines = trimmed.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const skipHeader = /^(names?|full[_ ]?names?|student(_?names?)?)$/i.test(lines[0] ?? "") ? 1 : 0;
+  const skipHeader = /^(names?|full[_ ]?names?|student(_?names?)?|worker(_?names?)?)$/i.test(lines[0] ?? "") ? 1 : 0;
   return lines.slice(skipHeader).map((name) => ({ full_name: name }));
 }
 
@@ -128,12 +137,16 @@ function normalizeDate(s: string): string | null {
 
 interface PreparedRow {
   full_name: string;
+  category: "worker" | "intern" | "visitor";
+  company_name: string | null;
+  institution: string | null;
   admission_number: string | null;   // null → will be auto-generated on import
   barcode: string | null;
   programme: string;
   nta_level: string;
   year_of_study: number;
   status: string;
+  valid_from: string | null;
   expires_at: string | null;
   parent_email: string | null;
   parent_phone: string | null;
@@ -169,6 +182,16 @@ export default function BulkImportDialog({
   const [sourceCols, setSourceCols] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [autoGen, setAutoGen] = useState(true);
+
+  // Plant 3 scope
+  const [plant3Id, setPlant3Id] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.from("plants").select("id").eq("code", "plant-3").maybeSingle()
+      .then(({ data }) => {
+        if (data?.id) setPlant3Id(data.id);
+      });
+  }, []);
 
   // Import execution
   const [importing, setImporting] = useState(false);
@@ -250,6 +273,19 @@ export default function BulkImportDialog({
       const full_name = get(row, "full_name");
       if (!full_name) { skippedNoName++; continue; }
 
+      const rawCat = get(row, "category").toLowerCase();
+      const comp = get(row, "company_name") || null;
+      const inst = get(row, "institution") || null;
+
+      let category: "worker" | "intern" | "visitor" = "worker";
+      if (rawCat.includes("intern") || rawCat.includes("student")) {
+        category = "intern";
+      } else if (rawCat.includes("visitor") || rawCat.includes("guest")) {
+        category = "visitor";
+      } else if (!rawCat && inst && !comp) {
+        category = "intern";
+      }
+
       const admission = get(row, "admission_number");
       let barcode = get(row, "barcode");
       const auto = !admission;
@@ -261,12 +297,16 @@ export default function BulkImportDialog({
 
       const rec: PreparedRow = {
         full_name,
+        category,
+        company_name: comp,
+        institution: inst,
         admission_number: admission || null,
         barcode: barcode || null,
-        programme: get(row, "programme"),
+        programme: get(row, "programme") || (comp ?? inst ?? "General"),
         nta_level: get(row, "nta_level"),
         year_of_study: Number.isFinite(yos) && yos > 0 ? yos : 1,
         status: STATUSES.includes(statusRaw) ? statusRaw : "active",
+        valid_from: normalizeDate(get(row, "valid_from")),
         expires_at: normalizeDate(get(row, "expires_at")),
         parent_email: get(row, "parent_email") || null,
         parent_phone: get(row, "parent_phone") || null,
@@ -296,9 +336,21 @@ export default function BulkImportDialog({
     try {
       const base = Date.now().toString(36).toUpperCase();
       const finalRows = prepared.rows.map((r, i) => {
-        const admission = r.admission_number ?? `S${base}${i}`;
+        const prefix = r.category === "intern" ? "INT" : "WRK";
+        const admission = r.admission_number ?? `${prefix}-${base}-${String(i + 1).padStart(3, "0")}`;
         const { _auto, ...rest } = r;
-        return { ...rest, admission_number: admission, barcode: (r.barcode || admission), is_visitor: false };
+        return {
+          ...rest,
+          admission_number: admission,
+          barcode: (r.barcode || admission),
+          category: r.category,
+          company_name: r.company_name,
+          institution: r.institution,
+          plant_id: plant3Id,
+          valid_from: r.valid_from ? new Date(`${r.valid_from}T00:00:00`).toISOString() : null,
+          expires_at: r.expires_at ? new Date(`${r.expires_at}T23:59:59`).toISOString() : null,
+          is_visitor: r.category === "visitor",
+        };
       });
 
       // Determine which admission numbers already exist → created vs updated.
@@ -337,7 +389,7 @@ export default function BulkImportDialog({
       };
       setResult(res);
       if (success > 0) {
-        toast.success(`Imported ${success} student${success !== 1 ? "s" : ""} · ${created} new, ${success - created} updated`);
+        toast.success(`Imported ${success} record${success !== 1 ? "s" : ""} · ${created} new, ${success - created} updated`);
         onImported();
       } else {
         toast.error("Import failed — see details.");
@@ -349,11 +401,38 @@ export default function BulkImportDialog({
     }
   };
 
-  const downloadTemplate = () => downloadCSV("students-template.csv", [{
-    admission_number: "24050512001", barcode: "24050512001", full_name: "John Doe",
-    programme: "Computer Science", nta_level: "6", year_of_study: "1", status: "active",
-    expires_at: "", parent_email: "parent@example.com", parent_phone: "+255700000000", notes: "",
-  }]);
+  const downloadTemplate = () => downloadCSV("abb-plant3-personnel-template.csv", [
+    {
+      admission_number: "WRK-2026-001",
+      barcode: "WRK-2026-001",
+      full_name: "John Doe",
+      category: "worker",
+      company_name: "Apex Engineering Ltd",
+      institution: "",
+      programme: "Electrical Maintenance",
+      status: "active",
+      valid_from: "2026-01-01",
+      expires_at: "2026-12-31",
+      parent_email: "contact@apexeng.co.tz",
+      parent_phone: "+255712000111",
+      notes: "Authorized Plant 3 contractor",
+    },
+    {
+      admission_number: "INT-2026-101",
+      barcode: "INT-2026-101",
+      full_name: "Jane Smith",
+      category: "intern",
+      company_name: "",
+      institution: "Arusha Technical College",
+      programme: "Automation & Robotics",
+      status: "active",
+      valid_from: "2026-06-01",
+      expires_at: "2026-09-30",
+      parent_email: "dean.engineering@atc.ac.tz",
+      parent_phone: "+255754000222",
+      notes: "Summer internship term",
+    },
+  ]);
 
   const selectableCols = sourceCols.filter(Boolean);
 
@@ -362,11 +441,11 @@ export default function BulkImportDialog({
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5 text-primary" /> Bulk import students
+            <Upload className="h-5 w-5 text-primary" /> Bulk import workers &amp; interns
           </DialogTitle>
           <DialogDescription>
-            Add many students at once from a CSV/JSON file, pasted text, or a live API link.
-            Only a <strong>name</strong> is required — admission numbers and barcodes are generated automatically when missing.
+            Import personnel records for ABB Plant 3. Columns are automatically mapped for contractor agencies, universities, and validity ranges.
+            Only <strong>Full name</strong> is required — IDs and barcodes are generated automatically if missing.
           </DialogDescription>
         </DialogHeader>
 
@@ -392,7 +471,7 @@ export default function BulkImportDialog({
             </div>
             {result.dupMerged > 0 && (
               <p className="text-xs text-muted-foreground">
-                {result.dupMerged} duplicate admission number{result.dupMerged !== 1 ? "s" : ""} within the file were merged (last row won).
+                {result.dupMerged} duplicate ID{result.dupMerged !== 1 ? "s" : ""} within the file were merged (last row won).
               </p>
             )}
             {result.errors.length > 0 && (
@@ -457,7 +536,7 @@ export default function BulkImportDialog({
               <input type="checkbox" checked={autoGen} onChange={(e) => setAutoGen(e.target.checked)} className="mt-0.5" />
               <span className="flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                Auto-generate an admission number &amp; barcode when a row has none
+                Auto-generate an ID and barcode when a row has none
                 {prepared.stats.willGenerate > 0 && (
                   <Badge variant="outline" className="ml-1 text-[10px]">{prepared.stats.willGenerate} row(s)</Badge>
                 )}
@@ -478,9 +557,10 @@ export default function BulkImportDialog({
                   <thead className="bg-secondary/60 text-left uppercase tracking-wide text-muted-foreground">
                     <tr>
                       <th className="px-3 py-2">Name</th>
-                      <th className="px-3 py-2">Admission</th>
-                      <th className="px-3 py-2">Barcode</th>
-                      <th className="px-3 py-2 hidden sm:table-cell">Programme</th>
+                      <th className="px-3 py-2">Category</th>
+                      <th className="px-3 py-2">ID / Admission</th>
+                      <th className="px-3 py-2">Company / Institution</th>
+                      <th className="px-3 py-2">Validity</th>
                       <th className="px-3 py-2">Status</th>
                     </tr>
                   </thead>
@@ -488,13 +568,22 @@ export default function BulkImportDialog({
                     {prepared.rows.slice(0, 8).map((r, i) => (
                       <tr key={i}>
                         <td className="px-3 py-1.5 font-medium">{r.full_name}</td>
+                        <td className="px-3 py-1.5">
+                          {r.category === "intern" ? (
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[10px]">Intern</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px]">Worker</Badge>
+                          )}
+                        </td>
                         <td className="px-3 py-1.5 font-mono">
                           {r.admission_number ?? <span className="italic text-primary">(auto)</span>}
                         </td>
-                        <td className="px-3 py-1.5 font-mono">
-                          {r.barcode ?? <span className="italic text-primary">(auto)</span>}
+                        <td className="px-3 py-1.5 text-muted-foreground">
+                          {r.company_name || r.institution || "—"}
                         </td>
-                        <td className="px-3 py-1.5 hidden sm:table-cell text-muted-foreground">{r.programme || "—"}</td>
+                        <td className="px-3 py-1.5 font-mono text-muted-foreground">
+                          {r.valid_from ? r.valid_from.slice(0, 10) : "Start"} → {r.expires_at ? r.expires_at.slice(0, 10) : "Permanent"}
+                        </td>
                         <td className="px-3 py-1.5">{r.status}</td>
                       </tr>
                     ))}
@@ -515,7 +604,7 @@ export default function BulkImportDialog({
               <Button onClick={doImport} disabled={!canImport || importing} className="gap-2">
                 {importing
                   ? <><Loader2 className="h-4 w-4 animate-spin" /> Importing… {progress}%</>
-                  : <><Upload className="h-4 w-4" /> Import {prepared.rows.length} student{prepared.rows.length !== 1 ? "s" : ""}</>}
+                  : <><Upload className="h-4 w-4" /> Import {prepared.rows.length} record{prepared.rows.length !== 1 ? "s" : ""}</>}
               </Button>
             </DialogFooter>
           </div>
@@ -556,7 +645,7 @@ export default function BulkImportDialog({
               <Textarea
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
-                placeholder={"Paste CSV, JSON, or one student name per line, e.g.\n\nJohn Doe\nJane Smith\nAli Hassan"}
+                placeholder={"Paste CSV, JSON, or one name per line, e.g.\n\nJohn Doe\nJane Smith\nAli Hassan"}
                 className="h-40 font-mono text-xs"
               />
               <div className="flex items-center justify-between">
@@ -576,7 +665,7 @@ export default function BulkImportDialog({
                 <Input
                   value={apiUrl}
                   onChange={(e) => setApiUrl(e.target.value)}
-                  placeholder="https://api.example.com/students"
+                  placeholder="https://api.example.com/personnel"
                 />
               </div>
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -591,7 +680,7 @@ export default function BulkImportDialog({
               </div>
               <p className="flex items-start gap-1 text-xs text-muted-foreground">
                 <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                The endpoint should return a JSON array of students (or an object with a <code>data</code>/<code>students</code> array), or CSV text.
+                The endpoint should return a JSON array (or an object with a <code>data</code>/<code>items</code> array), or CSV text.
                 Cross-origin (CORS) restrictions apply — if the fetch is blocked, download the data and use the File tab.
               </p>
               <div className="flex justify-end">

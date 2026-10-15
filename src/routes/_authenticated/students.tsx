@@ -1,8 +1,6 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Navigate } from "@tanstack/react-router";
 
-// This file is a transparent layout — the real pages are:
-//   students.index.tsx  →  /students   (list)
-//   students.$id.tsx    →  /students/:id  (editor / new)
+// Backward-compatibility alias route: redirects /students to /personnel
 export const Route = createFileRoute("/_authenticated/students")({
-  component: () => <Outlet />,
+  component: () => <Navigate to="/personnel" replace />,
 });

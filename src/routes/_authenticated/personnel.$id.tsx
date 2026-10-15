@@ -22,7 +22,7 @@ import { toast } from "sonner";
 import { downloadIdCard } from "@/lib/idcard";
 import jsPDF from "jspdf";
 
-export const Route = createFileRoute("/_authenticated/students/$id")({
+export const Route = createFileRoute("/_authenticated/personnel/$id")({
   component: StudentEditor,
 });
 
@@ -53,7 +53,7 @@ function Section({
 
 function StudentEditor() {
   const { t } = useTranslation();
-  const { id }         = useParams({ from: "/_authenticated/students/$id" });
+  const { id }         = useParams({ from: "/_authenticated/personnel/$id" });
   const { isAdmin, loading } = useAuth();
   const navigate       = useNavigate();
   const isNew          = id === "new";
@@ -85,6 +85,9 @@ function StudentEditor() {
 
   // ── Form state ──
   const [form, setForm] = useState({
+    category:          "worker" as "worker" | "intern" | "visitor",
+    company_name:      "",
+    institution:       "",
     admission_number:  "",
     barcode:           "",
     full_name:         "",
@@ -94,11 +97,20 @@ function StudentEditor() {
     status:            "active" as "active" | "suspended" | "graduated",
     suspension_reason: "",
     suspended_until:   "",
-    notes:             "",
+    valid_from:        "",
     expires_at:        "",
+    notes:             "",
     is_visitor:        false,
     parent_email:      "",
     parent_phone:      "",
+  });
+
+  const { data: plant3 } = useQuery({
+    queryKey: ["plant-3-default"],
+    queryFn: async () => {
+      const { data } = await supabase.from("plants").select("id, name").eq("code", "plant-3").maybeSingle();
+      return data;
+    },
   });
 
   const barcodeManualRef = useRef(false);
@@ -118,6 +130,9 @@ function StudentEditor() {
     if (student) {
       barcodeManualRef.current = true;
       setForm({
+        category:          (student.category ?? (student.is_visitor ? "visitor" : "worker")) as "worker" | "intern" | "visitor",
+        company_name:      student.company_name      ?? "",
+        institution:       student.institution       ?? "",
         admission_number:  student.admission_number,
         barcode:           student.barcode,
         full_name:         student.full_name,
@@ -127,8 +142,9 @@ function StudentEditor() {
         status:            student.status as any,
         suspension_reason: (student as any).suspension_reason ?? "",
         suspended_until:   (student as any).suspended_until   ?? "",
+        valid_from:        student.valid_from ? String(student.valid_from).slice(0, 10) : "",
+        expires_at:        student.expires_at ? String(student.expires_at).slice(0, 10) : "",
         notes:             student.notes             ?? "",
-        expires_at:        student.expires_at        ?? "",
         is_visitor:        student.is_visitor        ?? false,
         parent_email:      student.parent_email      ?? "",
         parent_phone:      student.parent_phone      ?? "",
@@ -231,10 +247,26 @@ function StudentEditor() {
 
   const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.admission_number.trim()) e.admission_number = "Admission number is required";
+    if (!form.admission_number.trim()) e.admission_number = "Worker / Intern ID is required";
     if (!form.barcode.trim())          e.barcode = "Barcode is required";
     if (!form.full_name.trim())        e.full_name = "Full name is required";
-    if (!form.programme.trim())        e.programme = "Programme / course is required";
+    if (form.category === "worker" && !form.company_name.trim()) {
+      e.company_name = "Contractor company / agency is required";
+    }
+    if (form.category === "intern") {
+      if (!form.institution.trim()) {
+        e.institution = "College / University institution is required";
+      }
+      if (!form.valid_from) {
+        e.valid_from = "Internship start date (Valid From) is required";
+      }
+      if (!form.expires_at) {
+        e.expires_at = "Internship end date (Valid Until) is required";
+      }
+    }
+    if (form.valid_from && form.expires_at && form.valid_from > form.expires_at) {
+      e.expires_at = "Expiry date cannot be earlier than start date";
+    }
     if (form.status === "suspended" && !form.suspension_reason.trim())
       e.suspension_reason = "Reason is required when status is Suspended";
     if (form.parent_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.parent_email))
@@ -249,12 +281,18 @@ function StudentEditor() {
     try {
       const payload: Record<string, unknown> = {
         ...form,
+        category:          form.category,
+        company_name:      form.category === "worker" ? form.company_name.trim() : null,
+        institution:       form.category === "intern" ? form.institution.trim() : null,
+        plant_id:          student?.plant_id || plant3?.id || null,
         admission_number:  form.admission_number.trim(),
         barcode:           form.barcode.trim(),
         full_name:         form.full_name.trim(),
+        programme:         form.programme.trim() || (form.category === "worker" ? form.company_name.trim() : (form.institution.trim() || "General")),
         photo_url:         photoUrl,
-        year_of_study:     Number(form.year_of_study),
-        expires_at:        form.expires_at        || null,
+        year_of_study:     Number(form.year_of_study || 1),
+        valid_from:        form.valid_from ? new Date(`${form.valid_from}T00:00:00`).toISOString() : null,
+        expires_at:        form.expires_at ? new Date(`${form.expires_at}T23:59:59`).toISOString() : null,
         parent_email:      form.parent_email      || null,
         parent_phone:      form.parent_phone      || null,
         suspension_reason: form.status === "suspended" ? (form.suspension_reason || null) : null,
@@ -276,7 +314,7 @@ function StudentEditor() {
           return;
         }
         toast.success(t("sedit.toast_created"));
-        navigate({ to: "/students/$id", params: { id: data.id } });
+        navigate({ to: "/personnel/$id", params: { id: data.id } });
       } else {
         const { error } = await supabase.from("students").update(payload as any).eq("id", id);
         if (error) {
@@ -307,7 +345,7 @@ function StudentEditor() {
     const { error } = await supabase.from("students").delete().eq("id", id);
     if (error) return toast.error(error.message);
     toast.success("Deleted");
-    navigate({ to: "/students" });
+    navigate({ to: "/personnel" });
   };
 
   const printIdCard = async () => {
@@ -321,10 +359,19 @@ function StudentEditor() {
       } catch {/* ignore */}
     }
     downloadIdCard({
-      full_name: form.full_name, admission_number: form.admission_number,
-      barcode: form.barcode, programme: form.programme,
-      nta_level: form.nta_level, year_of_study: form.year_of_study,
-      photoDataUrl, is_visitor: form.is_visitor, expires_at: form.expires_at || null,
+      full_name:        form.full_name,
+      admission_number: form.admission_number,
+      barcode:          form.barcode,
+      category:         form.category,
+      company_name:     form.company_name,
+      institution:      form.institution,
+      programme:        form.programme,
+      valid_from:       form.valid_from,
+      nta_level:        form.nta_level,
+      year_of_study:    form.year_of_study,
+      photoDataUrl,
+      is_visitor:       form.is_visitor,
+      expires_at:       form.expires_at || null,
     });
   };
 
@@ -373,7 +420,7 @@ function StudentEditor() {
 
       {/* ── Breadcrumb ── */}
       <div className="flex items-center gap-2">
-        <Link to="/students" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        <Link to="/personnel" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="h-4 w-4" /> {t("sedit.breadcrumb")}
         </Link>
         <span className="text-muted-foreground/40">/</span>
@@ -505,12 +552,31 @@ function StudentEditor() {
             <Section icon={FileText} title={t("sedit.sec_identity")}>
               <div className="grid gap-4 sm:grid-cols-2">
 
-                {/* Admission number */}
+                {/* Category selector */}
+                <div className="sm:col-span-2 space-y-1.5">
+                  <Label>{t("sedit.label_category")} <span className="text-destructive">*</span></Label>
+                  <Select
+                    value={form.category}
+                    onValueChange={(v: "worker" | "intern") => {
+                      set("category", v);
+                      clearErr("company_name");
+                      clearErr("institution");
+                    }}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="worker">{t("sedit.cat_worker")}</SelectItem>
+                      <SelectItem value="intern">{t("sedit.cat_intern")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Admission / Worker ID */}
                 <div className="space-y-1.5">
                   <Label>{t("sedit.label_admission")} <span className="text-destructive">*</span></Label>
                   <Input
                     value={form.admission_number}
-                    placeholder="e.g. 24050512001"
+                    placeholder="e.g. WRK-2026-001"
                     onChange={(e) => {
                       const v = e.target.value;
                       setForm((f) => ({
@@ -548,7 +614,7 @@ function StudentEditor() {
                   </div>
                   <Input
                     value={form.barcode}
-                    placeholder="Auto-filled from admission number"
+                    placeholder="Auto-filled from ID"
                     onChange={(e) => {
                       barcodeManualRef.current = true;
                       set("barcode", e.target.value);
@@ -558,7 +624,7 @@ function StudentEditor() {
                   />
                   {errors.barcode
                     ? <p className="text-xs text-destructive">{errors.barcode}</p>
-                    : <p className="text-xs text-muted-foreground">Printed on the ID card and scanned at the gate</p>
+                    : <p className="text-xs text-muted-foreground">Printed on ID card and scanned at the gate</p>
                   }
                 </div>
 
@@ -577,53 +643,58 @@ function StudentEditor() {
             </Section>
           </div>
 
-          {/* ── Academic details ── */}
+          {/* ── Assignment & Employer ── */}
           <Section icon={BookOpen} title={t("sedit.sec_academic")}>
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
 
-              {/* Programme */}
-              <div className="sm:col-span-2 md:col-span-1 space-y-1.5">
-                <Label>{t("sedit.label_programme")} <span className="text-destructive">*</span></Label>
+              {/* Contractor Company (Workers) or Institution (Interns) */}
+              {form.category === "worker" ? (
+                <div className="sm:col-span-2 md:col-span-2 space-y-1.5">
+                  <Label>{t("sedit.label_company")} <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={form.company_name}
+                    placeholder={t("sedit.ph_company")}
+                    onChange={(e) => { set("company_name", e.target.value); clearErr("company_name"); }}
+                    className={errors.company_name ? "border-destructive focus-visible:ring-destructive" : ""}
+                  />
+                  {errors.company_name
+                    ? <p className="text-xs text-destructive">{errors.company_name}</p>
+                    : <p className="text-xs text-muted-foreground">{t("sedit.hint_company")}</p>
+                  }
+                </div>
+              ) : (
+                <div className="sm:col-span-2 md:col-span-2 space-y-1.5">
+                  <Label>{t("sedit.label_institution")} <span className="text-destructive">*</span></Label>
+                  <Input
+                    value={form.institution}
+                    placeholder={t("sedit.ph_institution")}
+                    onChange={(e) => { set("institution", e.target.value); clearErr("institution"); }}
+                    className={errors.institution ? "border-destructive focus-visible:ring-destructive" : ""}
+                  />
+                  {errors.institution
+                    ? <p className="text-xs text-destructive">{errors.institution}</p>
+                    : <p className="text-xs text-muted-foreground">{t("sedit.hint_institution")}</p>
+                  }
+                </div>
+              )}
+
+              {/* Plant Assignment */}
+              <div className="space-y-1.5">
+                <Label>{t("sedit.label_plant")}</Label>
+                <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted/50 px-3 py-2 text-sm font-semibold text-foreground">
+                  ABB Plant 3
+                </div>
+                <p className="text-[11px] text-muted-foreground">Authorized for Plant 3 operations only</p>
+              </div>
+
+              {/* Department / Role */}
+              <div className="sm:col-span-2 md:col-span-3 space-y-1.5">
+                <Label>{t("sedit.label_programme")}</Label>
                 <Input
                   value={form.programme}
-                  placeholder="e.g. Computer Science, Civil Engineering…"
+                  placeholder="e.g. Electrical Maintenance, Fabrication, Quality Testing, Logistics"
                   onChange={(e) => { set("programme", e.target.value); clearErr("programme"); }}
-                  className={errors.programme ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
-                {errors.programme && <p className="text-xs text-destructive">{errors.programme}</p>}
-              </div>
-
-              {/* NTA level */}
-              <div className="space-y-1.5">
-                <Label>{t("sedit.label_nta")}</Label>
-                <Select
-                  value={form.nta_level || "none"}
-                  onValueChange={(v) => set("nta_level", v === "none" ? "" : v)}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">{t("sedit.nta_none")}</SelectItem>
-                    {["4", "5", "6", "7", "8", "9"].map((l) => (
-                      <SelectItem key={l} value={l}>{t("sedit.nta_level", { n: l })}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Year of study */}
-              <div className="space-y-1.5">
-                <Label>{t("sedit.label_year")}</Label>
-                <Select
-                  value={String(form.year_of_study)}
-                  onValueChange={(v) => set("year_of_study", Number(v))}
-                >
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {[1, 2, 3, 4, 5, 6].map((y) => (
-                      <SelectItem key={y} value={String(y)}>{t("sedit.year_n", { n: y })}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
             </div>
           </Section>
@@ -645,15 +716,40 @@ function StudentEditor() {
                 </Select>
               </div>
 
-              {/* Card expiry */}
+              {/* Card valid from */}
               <div className="space-y-1.5">
-                <Label>{t("sedit.label_expiry")}</Label>
+                <Label>
+                  {t("sedit.label_valid_from")}
+                  {form.category === "intern" && <span className="text-destructive"> *</span>}
+                </Label>
+                <Input
+                  type="date"
+                  value={form.valid_from}
+                  onChange={(e) => { set("valid_from", e.target.value); clearErr("valid_from"); }}
+                  className={errors.valid_from ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
+                {errors.valid_from && <p className="text-xs text-destructive">{errors.valid_from}</p>}
+              </div>
+
+              {/* Card expiry */}
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>
+                  {t("sedit.label_expiry")}
+                  {form.category === "intern" && <span className="text-destructive"> *</span>}
+                </Label>
                 <Input
                   type="date"
                   value={form.expires_at}
-                  onChange={(e) => set("expires_at", e.target.value)}
+                  onChange={(e) => { set("expires_at", e.target.value); clearErr("expires_at"); }}
+                  className={errors.expires_at ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
-                <p className="text-xs text-muted-foreground">{t("sedit.expiry_hint")}</p>
+                {errors.expires_at ? (
+                  <p className="text-xs text-destructive">{errors.expires_at}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    {form.category === "intern" ? t("sedit.hint_intern_dates") : t("sedit.expiry_hint")}
+                  </p>
+                )}
               </div>
 
               {/* Suspension fields — only when suspended */}
@@ -698,31 +794,43 @@ function StudentEditor() {
             </div>
           </Section>
 
-          {/* ── Parent / guardian contact ── */}
-          <Section icon={Phone} title={t("sedit.sec_parent")}>
+          {/* ── Supervisor / Parent contact ── */}
+          <Section
+            icon={Phone}
+            title={form.category === "intern" ? t("sedit.sec_supervisor") : t("sedit.sec_parent")}
+          >
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label>{t("sedit.label_email")}</Label>
+                <Label>
+                  {form.category === "intern" ? t("sedit.label_supervisor_email") : t("sedit.label_email")}
+                </Label>
                 <Input
                   type="email"
                   value={form.parent_email}
-                  placeholder="parent@example.com"
+                  placeholder={form.category === "intern" ? "supervisor@college.ac.tz" : "parent@example.com"}
                   onChange={(e) => { set("parent_email", e.target.value); clearErr("parent_email"); }}
                   className={errors.parent_email ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
                 {errors.parent_email
                   ? <p className="text-xs text-destructive">{errors.parent_email}</p>
-                  : <p className="text-xs text-muted-foreground">{t("sedit.email_hint")}</p>
+                  : <p className="text-xs text-muted-foreground">
+                      {form.category === "intern" ? t("sedit.supervisor_email_hint") : t("sedit.email_hint")}
+                    </p>
                 }
               </div>
               <div className="space-y-1.5">
-                <Label>{t("sedit.label_phone")}</Label>
+                <Label>
+                  {form.category === "intern" ? t("sedit.label_supervisor_phone") : t("sedit.label_phone")}
+                </Label>
                 <Input
                   type="tel"
                   value={form.parent_phone}
                   placeholder="+255 7XX XXX XXX"
                   onChange={(e) => set("parent_phone", e.target.value)}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {form.category === "intern" ? t("sedit.supervisor_phone_hint") : "Emergency contact phone"}
+                </p>
               </div>
             </div>
           </Section>
@@ -749,7 +857,7 @@ function StudentEditor() {
               </Button>
             )}
             <div className="ml-auto flex gap-3">
-              <Button variant="outline" onClick={() => navigate({ to: "/students" })}>
+              <Button variant="outline" onClick={() => navigate({ to: "/personnel" })}>
                 {t("common.cancel")}
               </Button>
               <Button onClick={save} disabled={saving} className="min-w-[140px]">
@@ -757,7 +865,7 @@ function StudentEditor() {
                   <span className="flex items-center gap-2">
                     <RefreshCw className="h-4 w-4 animate-spin" /> {t("sedit.saving")}
                   </span>
-                ) : isNew ? t("sedit.create_btn") : t("sedit.save_btn")}
+                ) : isNew ? (form.category === "intern" ? t("sedit.create_intern_btn") : t("sedit.create_btn")) : t("sedit.save_btn")}
               </Button>
             </div>
           </div>

@@ -34,6 +34,7 @@ import {
   Flag,
   Menu,
   X,
+  Utensils,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
@@ -49,13 +50,14 @@ const NAV_ITEMS = [
   { to: "/announcements", labelKey: "nav.announcements", icon: Megaphone,       adminOnly: false },
   { to: "/my-shift",      labelKey: "nav.my_shift",      icon: Timer,           adminOnly: false },
   { to: "/inside",        labelKey: "nav.whos_inside",   icon: Eye,             adminOnly: false },
+  { to: "/canteen",       labelKey: "nav.canteen",       icon: Utensils,        adminOnly: false },
   { to: "/visitors",      labelKey: "nav.visitors",      icon: UserPlus,        adminOnly: false },
   { to: "/appointments",  labelKey: "nav.appointments",  icon: CalendarClock,   adminOnly: false },
   { to: "/incidents",     labelKey: "nav.incidents",     icon: AlertOctagon,    adminOnly: false },
   { to: "/watchlist",     labelKey: "nav.watchlist",     icon: Flag,            adminOnly: false },
   { to: "/logs",          labelKey: "nav.logs",          icon: ClipboardList,   adminOnly: false },
   { to: "/reports",       labelKey: "nav.reports",       icon: BarChart2,       adminOnly: false },
-  { to: "/students",      labelKey: "nav.students",      icon: Users,           adminOnly: true  },
+  { to: "/personnel",     labelKey: "nav.personnel",     icon: Users,           adminOnly: true  },
   { to: "/gates",         labelKey: "nav.gates",         icon: DoorOpen,        adminOnly: true  },
   { to: "/notifications", labelKey: "nav.notifications", icon: Bell,            adminOnly: true  },
   { to: "/users",         labelKey: "nav.users",         icon: UserCog,         adminOnly: true  },
@@ -244,11 +246,16 @@ function AuthenticatedLayout() {
           )}
           {!collapsed && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold tracking-tight text-sidebar-foreground">
-                ABB
-              </p>
+              <div className="flex items-center gap-1.5">
+                <p className="truncate text-sm font-bold tracking-tight text-sidebar-foreground">
+                  ABB
+                </p>
+                <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-primary">
+                  Plant 3
+                </span>
+              </div>
               <p className="truncate text-[10px] text-sidebar-foreground/50 font-medium uppercase tracking-widest">
-                Verification
+                Security System
               </p>
             </div>
           )}
@@ -432,7 +439,12 @@ function AuthenticatedLayout() {
               <Menu className="h-5 w-5" />
             </button>
             <div>
-              <p className="text-sm font-bold leading-tight tracking-tight">ABB</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-sm font-bold leading-tight tracking-tight">ABB</p>
+                <span className="rounded bg-primary/10 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider text-primary">
+                  Plant 3
+                </span>
+              </div>
               <p className="text-[10px] font-medium leading-tight text-muted-foreground">{pageTitle}</p>
             </div>
           </div>
@@ -568,7 +580,12 @@ function AuthenticatedLayout() {
               <div className="flex items-center gap-2.5">
                 <AbbLogo className="h-6 w-[58px] shrink-0 object-contain" />
                 <div>
-                  <p className="text-sm font-bold text-sidebar-foreground">ABB</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-bold text-sidebar-foreground">ABB</p>
+                    <span className="rounded bg-primary/10 px-1 py-0.2 text-[9px] font-bold uppercase tracking-wider text-primary">
+                      Plant 3
+                    </span>
+                  </div>
                   <p className="text-[10px] font-medium text-sidebar-foreground/50">{roleLabel}</p>
                 </div>
               </div>

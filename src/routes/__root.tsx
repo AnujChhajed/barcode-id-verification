@@ -68,22 +68,22 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
 
       // App identity
-      { title: "ABB · Barcode Student Verification" },
-      { name: "description", content: "Arusha Technical College — main gate barcode student verification and access control system." },
-      { name: "author", content: "Dionysius John Kassongo" },
+      { title: "ABB Plant 3 · Security & Gate Management System" },
+      { name: "description", content: "ABB Plant 3 — Gate verification, worker, intern, and visitor security access control system." },
+      { name: "author", content: "ABB Plant 3 Security Operations" },
 
       // PWA / mobile app feel
       { name: "theme-color", content: "#ED1C24" },
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "ABB" },
-      { name: "application-name", content: "ABB" },
+      { name: "apple-mobile-web-app-title", content: "ABB Plant 3" },
+      { name: "application-name", content: "ABB Plant 3 Security" },
       { name: "msapplication-TileColor", content: "#ED1C24" },
 
       // Open Graph
-      { property: "og:title", content: "ABB · Barcode Student Verification" },
-      { property: "og:description", content: "Main gate access control for Arusha Technical College." },
+      { property: "og:title", content: "ABB Plant 3 · Security & Gate Management System" },
+      { property: "og:description", content: "Main gate access control, worker, intern, and visitor verification for ABB Plant 3." },
       { property: "og:type", content: "website" },
     ],
     links: [

@@ -19,7 +19,7 @@ export default defineConfig({
       // Supabase by routing through this machine.
       proxy: {
         "/supabase-proxy": {
-          target: "https://hbqvqlshqkqomhtqibpq.supabase.co",
+          target: "https://gxhhvgqujolqpxxmxtto.supabase.co",
           changeOrigin: true,
           secure: true,
           rewrite: (path) => path.replace(/^\/supabase-proxy/, ""),

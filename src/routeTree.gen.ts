@@ -20,6 +20,7 @@ import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/
 import { Route as AuthenticatedStudentsRouteImport } from './routes/_authenticated/students'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedReportsRouteImport } from './routes/_authenticated/reports'
+import { Route as AuthenticatedPersonnelRouteImport } from './routes/_authenticated/personnel'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
 import { Route as AuthenticatedMyShiftRouteImport } from './routes/_authenticated/my-shift'
 import { Route as AuthenticatedLogsRouteImport } from './routes/_authenticated/logs'
@@ -27,10 +28,11 @@ import { Route as AuthenticatedInsideRouteImport } from './routes/_authenticated
 import { Route as AuthenticatedIncidentsRouteImport } from './routes/_authenticated/incidents'
 import { Route as AuthenticatedGatesRouteImport } from './routes/_authenticated/gates'
 import { Route as AuthenticatedDashboardRouteImport } from './routes/_authenticated/dashboard'
+import { Route as AuthenticatedCanteenRouteImport } from './routes/_authenticated/canteen'
 import { Route as AuthenticatedAppointmentsRouteImport } from './routes/_authenticated/appointments'
 import { Route as AuthenticatedAnnouncementsRouteImport } from './routes/_authenticated/announcements'
-import { Route as AuthenticatedStudentsIndexRouteImport } from './routes/_authenticated/students.index'
-import { Route as AuthenticatedStudentsIdRouteImport } from './routes/_authenticated/students.$id'
+import { Route as AuthenticatedPersonnelIndexRouteImport } from './routes/_authenticated/personnel.index'
+import { Route as AuthenticatedPersonnelIdRouteImport } from './routes/_authenticated/personnel.$id'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -86,6 +88,11 @@ const AuthenticatedReportsRoute = AuthenticatedReportsRouteImport.update({
   path: '/reports',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedPersonnelRoute = AuthenticatedPersonnelRouteImport.update({
+  id: '/personnel',
+  path: '/personnel',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedNotificationsRoute =
   AuthenticatedNotificationsRouteImport.update({
     id: '/notifications',
@@ -122,6 +129,11 @@ const AuthenticatedDashboardRoute = AuthenticatedDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedCanteenRoute = AuthenticatedCanteenRouteImport.update({
+  id: '/canteen',
+  path: '/canteen',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedAppointmentsRoute =
   AuthenticatedAppointmentsRouteImport.update({
     id: '/appointments',
@@ -134,17 +146,18 @@ const AuthenticatedAnnouncementsRoute =
     path: '/announcements',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
-const AuthenticatedStudentsIndexRoute =
-  AuthenticatedStudentsIndexRouteImport.update({
+const AuthenticatedPersonnelIndexRoute =
+  AuthenticatedPersonnelIndexRouteImport.update({
     id: '/',
     path: '/',
-    getParentRoute: () => AuthenticatedStudentsRoute,
+    getParentRoute: () => AuthenticatedPersonnelRoute,
   } as any)
-const AuthenticatedStudentsIdRoute = AuthenticatedStudentsIdRouteImport.update({
-  id: '/$id',
-  path: '/$id',
-  getParentRoute: () => AuthenticatedStudentsRoute,
-} as any)
+const AuthenticatedPersonnelIdRoute =
+  AuthenticatedPersonnelIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedPersonnelRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -152,6 +165,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
+  '/canteen': typeof AuthenticatedCanteenRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/gates': typeof AuthenticatedGatesRoute
   '/incidents': typeof AuthenticatedIncidentsRoute
@@ -159,15 +173,16 @@ export interface FileRoutesByFullPath {
   '/logs': typeof AuthenticatedLogsRoute
   '/my-shift': typeof AuthenticatedMyShiftRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
+  '/personnel': typeof AuthenticatedPersonnelRouteWithChildren
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
-  '/students': typeof AuthenticatedStudentsRouteWithChildren
+  '/students': typeof AuthenticatedStudentsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/verify': typeof AuthenticatedVerifyRoute
   '/visitors': typeof AuthenticatedVisitorsRoute
   '/watchlist': typeof AuthenticatedWatchlistRoute
-  '/students/$id': typeof AuthenticatedStudentsIdRoute
-  '/students/': typeof AuthenticatedStudentsIndexRoute
+  '/personnel/$id': typeof AuthenticatedPersonnelIdRoute
+  '/personnel/': typeof AuthenticatedPersonnelIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -175,6 +190,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/announcements': typeof AuthenticatedAnnouncementsRoute
   '/appointments': typeof AuthenticatedAppointmentsRoute
+  '/canteen': typeof AuthenticatedCanteenRoute
   '/dashboard': typeof AuthenticatedDashboardRoute
   '/gates': typeof AuthenticatedGatesRoute
   '/incidents': typeof AuthenticatedIncidentsRoute
@@ -184,12 +200,13 @@ export interface FileRoutesByTo {
   '/notifications': typeof AuthenticatedNotificationsRoute
   '/reports': typeof AuthenticatedReportsRoute
   '/settings': typeof AuthenticatedSettingsRoute
+  '/students': typeof AuthenticatedStudentsRoute
   '/users': typeof AuthenticatedUsersRoute
   '/verify': typeof AuthenticatedVerifyRoute
   '/visitors': typeof AuthenticatedVisitorsRoute
   '/watchlist': typeof AuthenticatedWatchlistRoute
-  '/students/$id': typeof AuthenticatedStudentsIdRoute
-  '/students': typeof AuthenticatedStudentsIndexRoute
+  '/personnel/$id': typeof AuthenticatedPersonnelIdRoute
+  '/personnel': typeof AuthenticatedPersonnelIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -199,6 +216,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/announcements': typeof AuthenticatedAnnouncementsRoute
   '/_authenticated/appointments': typeof AuthenticatedAppointmentsRoute
+  '/_authenticated/canteen': typeof AuthenticatedCanteenRoute
   '/_authenticated/dashboard': typeof AuthenticatedDashboardRoute
   '/_authenticated/gates': typeof AuthenticatedGatesRoute
   '/_authenticated/incidents': typeof AuthenticatedIncidentsRoute
@@ -206,15 +224,16 @@ export interface FileRoutesById {
   '/_authenticated/logs': typeof AuthenticatedLogsRoute
   '/_authenticated/my-shift': typeof AuthenticatedMyShiftRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
+  '/_authenticated/personnel': typeof AuthenticatedPersonnelRouteWithChildren
   '/_authenticated/reports': typeof AuthenticatedReportsRoute
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
-  '/_authenticated/students': typeof AuthenticatedStudentsRouteWithChildren
+  '/_authenticated/students': typeof AuthenticatedStudentsRoute
   '/_authenticated/users': typeof AuthenticatedUsersRoute
   '/_authenticated/verify': typeof AuthenticatedVerifyRoute
   '/_authenticated/visitors': typeof AuthenticatedVisitorsRoute
   '/_authenticated/watchlist': typeof AuthenticatedWatchlistRoute
-  '/_authenticated/students/$id': typeof AuthenticatedStudentsIdRoute
-  '/_authenticated/students/': typeof AuthenticatedStudentsIndexRoute
+  '/_authenticated/personnel/$id': typeof AuthenticatedPersonnelIdRoute
+  '/_authenticated/personnel/': typeof AuthenticatedPersonnelIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -224,6 +243,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/announcements'
     | '/appointments'
+    | '/canteen'
     | '/dashboard'
     | '/gates'
     | '/incidents'
@@ -231,6 +251,7 @@ export interface FileRouteTypes {
     | '/logs'
     | '/my-shift'
     | '/notifications'
+    | '/personnel'
     | '/reports'
     | '/settings'
     | '/students'
@@ -238,8 +259,8 @@ export interface FileRouteTypes {
     | '/verify'
     | '/visitors'
     | '/watchlist'
-    | '/students/$id'
-    | '/students/'
+    | '/personnel/$id'
+    | '/personnel/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -247,6 +268,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/announcements'
     | '/appointments'
+    | '/canteen'
     | '/dashboard'
     | '/gates'
     | '/incidents'
@@ -256,12 +278,13 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/reports'
     | '/settings'
+    | '/students'
     | '/users'
     | '/verify'
     | '/visitors'
     | '/watchlist'
-    | '/students/$id'
-    | '/students'
+    | '/personnel/$id'
+    | '/personnel'
   id:
     | '__root__'
     | '/'
@@ -270,6 +293,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/announcements'
     | '/_authenticated/appointments'
+    | '/_authenticated/canteen'
     | '/_authenticated/dashboard'
     | '/_authenticated/gates'
     | '/_authenticated/incidents'
@@ -277,6 +301,7 @@ export interface FileRouteTypes {
     | '/_authenticated/logs'
     | '/_authenticated/my-shift'
     | '/_authenticated/notifications'
+    | '/_authenticated/personnel'
     | '/_authenticated/reports'
     | '/_authenticated/settings'
     | '/_authenticated/students'
@@ -284,8 +309,8 @@ export interface FileRouteTypes {
     | '/_authenticated/verify'
     | '/_authenticated/visitors'
     | '/_authenticated/watchlist'
-    | '/_authenticated/students/$id'
-    | '/_authenticated/students/'
+    | '/_authenticated/personnel/$id'
+    | '/_authenticated/personnel/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -374,6 +399,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedReportsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/personnel': {
+      id: '/_authenticated/personnel'
+      path: '/personnel'
+      fullPath: '/personnel'
+      preLoaderRoute: typeof AuthenticatedPersonnelRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/notifications': {
       id: '/_authenticated/notifications'
       path: '/notifications'
@@ -423,6 +455,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedDashboardRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/canteen': {
+      id: '/_authenticated/canteen'
+      path: '/canteen'
+      fullPath: '/canteen'
+      preLoaderRoute: typeof AuthenticatedCanteenRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/appointments': {
       id: '/_authenticated/appointments'
       path: '/appointments'
@@ -437,41 +476,43 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAnnouncementsRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/students/': {
-      id: '/_authenticated/students/'
+    '/_authenticated/personnel/': {
+      id: '/_authenticated/personnel/'
       path: '/'
-      fullPath: '/students/'
-      preLoaderRoute: typeof AuthenticatedStudentsIndexRouteImport
-      parentRoute: typeof AuthenticatedStudentsRoute
+      fullPath: '/personnel/'
+      preLoaderRoute: typeof AuthenticatedPersonnelIndexRouteImport
+      parentRoute: typeof AuthenticatedPersonnelRoute
     }
-    '/_authenticated/students/$id': {
-      id: '/_authenticated/students/$id'
+    '/_authenticated/personnel/$id': {
+      id: '/_authenticated/personnel/$id'
       path: '/$id'
-      fullPath: '/students/$id'
-      preLoaderRoute: typeof AuthenticatedStudentsIdRouteImport
-      parentRoute: typeof AuthenticatedStudentsRoute
+      fullPath: '/personnel/$id'
+      preLoaderRoute: typeof AuthenticatedPersonnelIdRouteImport
+      parentRoute: typeof AuthenticatedPersonnelRoute
     }
   }
 }
 
-interface AuthenticatedStudentsRouteChildren {
-  AuthenticatedStudentsIdRoute: typeof AuthenticatedStudentsIdRoute
-  AuthenticatedStudentsIndexRoute: typeof AuthenticatedStudentsIndexRoute
+interface AuthenticatedPersonnelRouteChildren {
+  AuthenticatedPersonnelIdRoute: typeof AuthenticatedPersonnelIdRoute
+  AuthenticatedPersonnelIndexRoute: typeof AuthenticatedPersonnelIndexRoute
 }
 
-const AuthenticatedStudentsRouteChildren: AuthenticatedStudentsRouteChildren = {
-  AuthenticatedStudentsIdRoute: AuthenticatedStudentsIdRoute,
-  AuthenticatedStudentsIndexRoute: AuthenticatedStudentsIndexRoute,
-}
+const AuthenticatedPersonnelRouteChildren: AuthenticatedPersonnelRouteChildren =
+  {
+    AuthenticatedPersonnelIdRoute: AuthenticatedPersonnelIdRoute,
+    AuthenticatedPersonnelIndexRoute: AuthenticatedPersonnelIndexRoute,
+  }
 
-const AuthenticatedStudentsRouteWithChildren =
-  AuthenticatedStudentsRoute._addFileChildren(
-    AuthenticatedStudentsRouteChildren,
+const AuthenticatedPersonnelRouteWithChildren =
+  AuthenticatedPersonnelRoute._addFileChildren(
+    AuthenticatedPersonnelRouteChildren,
   )
 
 interface AuthenticatedRouteChildren {
   AuthenticatedAnnouncementsRoute: typeof AuthenticatedAnnouncementsRoute
   AuthenticatedAppointmentsRoute: typeof AuthenticatedAppointmentsRoute
+  AuthenticatedCanteenRoute: typeof AuthenticatedCanteenRoute
   AuthenticatedDashboardRoute: typeof AuthenticatedDashboardRoute
   AuthenticatedGatesRoute: typeof AuthenticatedGatesRoute
   AuthenticatedIncidentsRoute: typeof AuthenticatedIncidentsRoute
@@ -479,9 +520,10 @@ interface AuthenticatedRouteChildren {
   AuthenticatedLogsRoute: typeof AuthenticatedLogsRoute
   AuthenticatedMyShiftRoute: typeof AuthenticatedMyShiftRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
+  AuthenticatedPersonnelRoute: typeof AuthenticatedPersonnelRouteWithChildren
   AuthenticatedReportsRoute: typeof AuthenticatedReportsRoute
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
-  AuthenticatedStudentsRoute: typeof AuthenticatedStudentsRouteWithChildren
+  AuthenticatedStudentsRoute: typeof AuthenticatedStudentsRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRoute
   AuthenticatedVerifyRoute: typeof AuthenticatedVerifyRoute
   AuthenticatedVisitorsRoute: typeof AuthenticatedVisitorsRoute
@@ -491,6 +533,7 @@ interface AuthenticatedRouteChildren {
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAnnouncementsRoute: AuthenticatedAnnouncementsRoute,
   AuthenticatedAppointmentsRoute: AuthenticatedAppointmentsRoute,
+  AuthenticatedCanteenRoute: AuthenticatedCanteenRoute,
   AuthenticatedDashboardRoute: AuthenticatedDashboardRoute,
   AuthenticatedGatesRoute: AuthenticatedGatesRoute,
   AuthenticatedIncidentsRoute: AuthenticatedIncidentsRoute,
@@ -498,9 +541,10 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedLogsRoute: AuthenticatedLogsRoute,
   AuthenticatedMyShiftRoute: AuthenticatedMyShiftRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
+  AuthenticatedPersonnelRoute: AuthenticatedPersonnelRouteWithChildren,
   AuthenticatedReportsRoute: AuthenticatedReportsRoute,
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
-  AuthenticatedStudentsRoute: AuthenticatedStudentsRouteWithChildren,
+  AuthenticatedStudentsRoute: AuthenticatedStudentsRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRoute,
   AuthenticatedVerifyRoute: AuthenticatedVerifyRoute,
   AuthenticatedVisitorsRoute: AuthenticatedVisitorsRoute,

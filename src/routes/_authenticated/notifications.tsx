@@ -164,7 +164,7 @@ function NotificationsPage() {
                     <td className="px-4 py-2.5 text-xs">
                       {n.student ? (
                         <Link
-                          to="/students/$id"
+                          to="/personnel/$id"
                           params={{ id: n.related_student_id }}
                           className="text-primary hover:underline"
                         >

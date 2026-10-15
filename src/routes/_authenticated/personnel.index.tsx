@@ -10,31 +10,35 @@ import { Badge } from "@/components/ui/badge";
 import {
   Search, Plus, Users, Download, Upload, IdCard, Image as ImgIcon,
   FileSpreadsheet, CheckSquare, Square, GraduationCap, ShieldOff, X,
-  Pencil, User as UserIcon,
+  Pencil, User as UserIcon, CalendarClock,
 } from "lucide-react";
 import { downloadCSV } from "@/lib/csv";
 import { downloadBulkIdCards, type IdCardStudent } from "@/lib/idcard";
 import BulkImportDialog from "@/components/BulkImportDialog";
+import { PassRenewalModal, RenewablePerson } from "@/components/PassRenewalModal";
 import { toast } from "sonner";
 import jsPDF from "jspdf";
 
-export const Route = createFileRoute("/_authenticated/students/")({
+export const Route = createFileRoute("/_authenticated/personnel/")({
   component: StudentsPage,
 });
 
 function StudentsPage() {
   const { t } = useTranslation();
   const { isAdmin, loading } = useAuth();
-  const [search, setSearch]               = useState("");
+  const [search, setSearch]                         = useState("");
+  const [categoryFilter, setCategoryFilter]         = useState<"all" | "worker" | "intern">("all");
   const photoInputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy]                   = useState(false);
-  const [importOpen, setImportOpen]       = useState(false);
-  const [selected, setSelected]           = useState<Set<string>>(new Set());
-  const [bulkSuspendReason, setBulkSuspendReason] = useState("");
-  const [bulkSuspendOpen,   setBulkSuspendOpen]   = useState(false);
+  const [busy, setBusy]                             = useState(false);
+  const [importOpen, setImportOpen]                 = useState(false);
+  const [selected, setSelected]                     = useState<Set<string>>(new Set());
+  const [bulkSuspendReason, setBulkSuspendReason]   = useState("");
+  const [bulkSuspendOpen,   setBulkSuspendOpen]     = useState(false);
+  const [renewalPerson, setRenewalPerson]           = useState<RenewablePerson | null>(null);
+  const [renewalOpen, setRenewalOpen]               = useState(false);
 
   const { data: students, isLoading, refetch } = useQuery({
-    queryKey: ["students", search],
+    queryKey: ["students", search, categoryFilter],
     queryFn: async () => {
       let q = supabase
         .from("students")
@@ -42,9 +46,12 @@ function StudentsPage() {
         .eq("is_visitor", false)          // visitors are managed under the Visitors menu
         .order("created_at", { ascending: false })
         .limit(500);
+      if (categoryFilter !== "all") {
+        q = q.eq("category", categoryFilter);
+      }
       if (search.trim()) {
         const s = `%${search.trim()}%`;
-        q = q.or(`full_name.ilike.${s},admission_number.ilike.${s},barcode.ilike.${s}`);
+        q = q.or(`full_name.ilike.${s},admission_number.ilike.${s},barcode.ilike.${s},company_name.ilike.${s},institution.ilike.${s}`);
       }
       const { data } = await q;
       return data ?? [];
@@ -56,19 +63,21 @@ function StudentsPage() {
 
   // ── CSV template ────────────────────────────────────────────────────────
   const downloadTemplate = () => {
-    downloadCSV("students-template.csv", [{
-      admission_number: "24050512001",
-      barcode:          "24050512001",
-      full_name:        "John Doe",
-      programme:        "Computer Science",
-      nta_level:        "6",
-      year_of_study:    "1",
+    downloadCSV("abb-plant3-personnel-template.csv", [{
+      admission_number: "WRK-2026-001",
+      barcode:          "WRK-2026-001",
+      full_name:        "Rajesh Patel",
+      category:         "worker",
+      company_name:     "Apex Technical Services",
+      institution:      "",
+      programme:        "Electrical Maintenance",
       status:           "active",
-      expires_at:       "",
+      valid_from:       "2026-10-15",
+      expires_at:       "2027-10-15",
       is_visitor:       "false",
-      parent_email:     "parent@example.com",
-      parent_phone:     "+255700000000",
-      notes:            "",
+      parent_email:     "",
+      parent_phone:     "+919876543210",
+      notes:            "Approved for Plant 3 Main Gate",
     }]);
   };
 
@@ -154,7 +163,7 @@ function StudentsPage() {
   const printRoster = () => {
     if (!students?.length) return;
     const doc = new jsPDF({ unit: "mm", format: "a4" });
-    const collegeName = "Arusha Technical College";
+    const siteTitle = "ABB Plant 3 — Industrial Gate Security";
     const grouped = new Map<string, typeof students>();
     for (const s of students) {
       const prog = (s as any).programme || "—";
@@ -165,9 +174,9 @@ function StudentsPage() {
     for (const [prog, rows] of Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b))) {
       if (!firstPage) doc.addPage();
       firstPage = false;
-      doc.setFillColor(20, 80, 50); doc.rect(0, 0, 210, 14, "F");
+      doc.setFillColor(255, 0, 15); doc.rect(0, 0, 210, 14, "F");
       doc.setTextColor(255); doc.setFontSize(10); doc.setFont("helvetica", "bold");
-      doc.text(collegeName.toUpperCase(), 105, 9, { align: "center" });
+      doc.text(siteTitle.toUpperCase(), 105, 9, { align: "center" });
       doc.setTextColor(30); doc.setFontSize(12); doc.setFont("helvetica", "bold");
       doc.text(`Programme: ${prog}`, 14, 24);
       doc.setFontSize(8); doc.setFont("helvetica", "normal"); doc.setTextColor(100);
@@ -235,13 +244,20 @@ function StudentsPage() {
           variant={s.status === "active" ? "default" : s.status === "suspended" ? "destructive" : "secondary"}
           className={s.status === "active" && !expired ? "bg-success/15 text-success hover:bg-success/20 border-success/25" : ""}
         >
-          {s.status}
+          {s.status === "graduated" ? "terminated" : s.status}
         </Badge>
         {expired && (
           <Badge variant="destructive" className="text-[10px]">expired</Badge>
         )}
       </div>
     );
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return "W";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -279,7 +295,7 @@ function StudentsPage() {
           </Button>
 
           {/* ── NEW student button ── */}
-          <Link to="/students/$id" params={{ id: "new" }}>
+          <Link to="/personnel/$id" params={{ id: "new" }}>
             <Button className="gap-2">
               <Plus className="h-4 w-4" /> {t("stu.btn_new")}
             </Button>
@@ -287,15 +303,35 @@ function StudentsPage() {
         </div>
       </div>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("stu.search_ph")}
-          className="pl-9"
-        />
+      {/* Category Tabs & Search Bar */}
+      <div className="space-y-3">
+        <div className="flex gap-2 border-b border-border pb-3">
+          {[
+            { key: "all", label: t("stu.tab_all") },
+            { key: "worker", label: t("stu.tab_workers") },
+            { key: "intern", label: t("stu.tab_interns") },
+          ].map((tab) => (
+            <Button
+              key={tab.key}
+              variant={categoryFilter === tab.key ? "default" : "outline"}
+              size="sm"
+              onClick={() => setCategoryFilter(tab.key as any)}
+              className="rounded-full px-4 text-xs font-semibold"
+            >
+              {tab.label}
+            </Button>
+          ))}
+        </div>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t("stu.search_ph")}
+            className="pl-9"
+          />
+        </div>
       </div>
 
       {/* Bulk action bar */}
@@ -362,7 +398,7 @@ function StudentsPage() {
             <Users className="h-12 w-12 text-muted-foreground/25" />
             <p className="font-semibold text-muted-foreground">{t("stu.empty")}</p>
             <p className="text-sm text-muted-foreground">{t("stu.empty_sub")}</p>
-            <Link to="/students/$id" params={{ id: "new" }} className="mt-1">
+            <Link to="/personnel/$id" params={{ id: "new" }} className="mt-1">
               <Button>
                 <Plus className="mr-2 h-4 w-4" /> {t("stu.add_first")}
               </Button>
@@ -387,8 +423,10 @@ function StudentsPage() {
                   <th className="px-3 py-3 w-10"></th>
                   <th className="px-4 py-3 text-left">{t("stu.col_admission")}</th>
                   <th className="px-4 py-3 text-left">{t("stu.col_name")}</th>
-                  <th className="px-4 py-3 text-left hidden md:table-cell">{t("stu.col_programme")}</th>
-                  <th className="px-4 py-3 text-left hidden sm:table-cell">{t("stu.col_nta")}</th>
+                  <th className="px-4 py-3 text-left">{t("stu.col_category")}</th>
+                  <th className="px-4 py-3 text-left hidden md:table-cell">{t("stu.col_company")}</th>
+                  <th className="px-4 py-3 text-left hidden lg:table-cell">{t("stu.col_plant")}</th>
+                  <th className="px-4 py-3 text-left hidden sm:table-cell">{t("stu.col_validity")}</th>
                   <th className="px-4 py-3 text-left">{t("stu.col_status")}</th>
                   <th className="px-4 py-3 text-right">{t("stu.col_action")}</th>
                 </tr>
@@ -412,51 +450,81 @@ function StudentsPage() {
                       </button>
                     </td>
 
-                    {/* Photo thumbnail */}
+                    {/* Photo thumbnail or Initials avatar fallback */}
                     <td className="px-3 py-3">
-                      <div className="grid h-8 w-8 overflow-hidden rounded-full bg-secondary ring-1 ring-border place-items-center">
-                        <UserIcon className="h-4 w-4 text-muted-foreground" />
+                      <div className="grid h-8 w-8 overflow-hidden rounded-full bg-secondary ring-1 ring-border place-items-center font-bold text-xs text-foreground/80">
+                        {getInitials(s.full_name)}
                       </div>
                     </td>
 
-                    {/* Admission # */}
-                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                    {/* Worker / Intern ID */}
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-foreground">
                       {s.admission_number}
                     </td>
 
                     {/* Name */}
                     <td className="px-4 py-3">
                       <p className="font-semibold leading-tight">{s.full_name}</p>
-                      {s.is_visitor && (
-                        <Badge variant="outline" className="mt-0.5 text-[10px]">visitor</Badge>
+                      {s.programme && (
+                        <p className="text-xs text-muted-foreground">{s.programme}</p>
                       )}
                     </td>
 
-                    {/* Programme */}
-                    <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                      {s.programme || <span className="text-muted-foreground/40">—</span>}
+                    {/* Category */}
+                    <td className="px-4 py-3">
+                      {s.category === "intern" ? (
+                        <Badge variant="outline" className="bg-blue-500/10 text-blue-600 border-blue-500/20 text-[11px]">
+                          Intern
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[11px]">
+                          Worker
+                        </Badge>
+                      )}
                     </td>
 
-                    {/* NTA / Year */}
-                    <td className="px-4 py-3 text-muted-foreground text-xs hidden sm:table-cell">
-                      {[s.nta_level && `NTA ${s.nta_level}`, s.year_of_study && `Yr ${s.year_of_study}`]
-                        .filter(Boolean).join(" · ") || "—"}
+                    {/* Contractor / Institution */}
+                    <td className="px-4 py-3 text-muted-foreground text-xs hidden md:table-cell font-medium">
+                      {s.company_name || s.institution || <span className="text-muted-foreground/40">—</span>}
+                    </td>
+
+                    {/* Plant */}
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <Badge variant="secondary" className="text-[10px] font-medium">
+                        Plant 3
+                      </Badge>
+                    </td>
+
+                    {/* Validity Period */}
+                    <td className="px-4 py-3 text-muted-foreground text-xs hidden sm:table-cell font-mono">
+                      {s.valid_from ? String(s.valid_from).slice(0, 10) : "Start"} → {s.expires_at ? String(s.expires_at).slice(0, 10) : "Permanent"}
                     </td>
 
                     {/* Status */}
                     <td className="px-4 py-3">{statusBadge(s)}</td>
 
-                    {/* Edit action */}
+                    {/* Actions */}
                     <td className="px-4 py-3 text-right">
-                      <Link to="/students/$id" params={{ id: s.id }}>
+                      <div className="flex items-center justify-end gap-1">
                         <Button
                           size="sm"
-                          variant="outline"
-                          className="gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          variant="ghost"
+                          onClick={() => { setRenewalPerson(s); setRenewalOpen(true); }}
+                          className="h-8 gap-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-600 hover:bg-red-600/5"
+                          title="Renew or extend pass"
                         >
-                          <Pencil className="h-3.5 w-3.5" /> {t("stu.edit_btn")}
+                          <CalendarClock className="h-3.5 w-3.5" /> Renew
                         </Button>
-                      </Link>
+                        <Link to="/personnel/$id" params={{ id: s.id }}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Pencil className="h-3.5 w-3.5" /> {t("stu.edit_btn")}
+                          </Button>
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -480,6 +548,14 @@ function StudentsPage() {
         open={importOpen}
         onOpenChange={setImportOpen}
         onImported={refetch}
+      />
+
+      {/* Pass Renewal & Validity Extension Dialog (Task 8.2) */}
+      <PassRenewalModal
+        open={renewalOpen}
+        onOpenChange={setRenewalOpen}
+        person={renewalPerson}
+        onSuccess={refetch}
       />
     </div>
   );

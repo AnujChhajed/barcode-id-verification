@@ -1,7 +1,7 @@
 {
-  "name": "ABB — Barcode Verification",
-  "short_name": "ABB",
-  "description": "Arusha Technical College main gate barcode student verification and access-control system.",
+  "name": "ABB Plant 3 — Security Management System",
+  "short_name": "ABB Plant 3",
+  "description": "ABB Plant 3 gate verification, worker, intern, and visitor security access control system.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -9,7 +9,7 @@
   "background_color": "#F3F4F6",
   "theme_color": "#ED1C24",
   "lang": "en",
-  "categories": ["education", "productivity", "utilities"],
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
       "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%23ED1C24'/%3E%3Cpath d='M64 56h8v80h-8zm16 0h4v80h-4zm12 0h8v80h-8zm16 0h4v80h-4zm12 0h8v80h-8zM56 148h80v8H56z' fill='white' opacity='.9'/%3E%3Ccircle cx='96' cy='80' r='20' fill='none' stroke='white' stroke-width='4'/%3E%3Cpath d='M88 80l6 6 12-12' stroke='white' stroke-width='4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E",

@@ -24,10 +24,11 @@ dist-ssr
 # Private — project report and credentials
 project\ .supervisor*
 project .supervisor*
-supabase/migrations/
+
 supabase/functions/
 
 # Wrangler / Cloudflare
+
 .wrangler/
 .dev.vars
 

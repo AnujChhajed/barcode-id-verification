@@ -1,8 +1,8 @@
 /**
- * /check — Public card-status page (no login required).
- * Students / visitors can verify their own card status at a kiosk.
+ * /check — ABB Plant 3 Credential Inspection Desk (Operator Login Required).
+ * Allows authorized security staff to verify pass details without logging gate entry/exit.
  */
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, Navigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ import {
   ScanLine,
   ArrowLeft,
   LayoutDashboard,
+  ShieldCheck,
 } from "lucide-react";
 
 export const Route = createFileRoute("/check")({
@@ -42,11 +43,26 @@ type CheckResult = {
 
 function CardCheckPage() {
   const { t } = useTranslation();
-  const { user, isAdmin } = useAuth();
+  const { user, loading, isAdmin } = useAuth();
   const [code,   setCode]   = useState("");
   const [busy,   setBusy]   = useState(false);
   const [result, setResult] = useState<CheckResult | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="text-sm text-muted-foreground">Verifying security session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   const check = async (raw = code) => {
     const trimmed = raw.trim();
@@ -54,8 +70,6 @@ function CardCheckPage() {
     setBusy(true);
     setResult(null);
     try {
-      // Uses a SECURITY DEFINER RPC so the anon role can read the safe subset
-      // of student fields without opening the whole table to public reads.
       const { data, error } = await supabase.rpc("check_student_card", { p_code: trimmed });
 
       if (error) throw error;
