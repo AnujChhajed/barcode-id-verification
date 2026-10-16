@@ -14,15 +14,10 @@ export default defineConfig({
   },
   vite: {
     server: {
-      // Proxy Supabase API requests through the dev server so that mobile devices
-      // on the LAN (which may not have direct internet access) can still reach
-      // Supabase by routing through this machine.
       proxy: {
-        "/supabase-proxy": {
-          target: "https://hbqvqlshqkqomhtqibpq.supabase.co",
+        "/api": {
+          target: "http://localhost:4000",
           changeOrigin: true,
-          secure: true,
-          rewrite: (path) => path.replace(/^\/supabase-proxy/, ""),
         },
       },
     },

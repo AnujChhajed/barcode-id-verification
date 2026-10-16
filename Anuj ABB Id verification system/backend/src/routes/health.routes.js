@@ -6,14 +6,14 @@ export function registerHealthRoutes({ registrar, db }) {
     method: "GET",
     path: "/api/health",
     access: PUBLIC,
-    handler: (req, res) => {
+    handler: async (req, res) => {
       let database = "ready";
       try {
-        db.prepare("SELECT 1 AS ok").get();
+        await db.query("SELECT 1 AS ok;");
       } catch {
         database = "unavailable";
       }
-      // Deliberately returns no configuration, counts, paths or versions.
+      // Deliberately returns no credentials, counts, paths or versions.
       res.json({
         status: database === "ready" ? "ok" : "degraded",
         database,

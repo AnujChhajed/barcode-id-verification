@@ -1,27 +1,77 @@
-import fs from "node:fs";
-import path from "node:path";
-import Database from "better-sqlite3";
+import pg from "pg";
 import { config } from "../config.js";
+import { logger } from "../lib/logger.js";
+
+const { Pool } = pg;
+
+let activePool = null;
+let activeConnectionString = null;
 
 /**
- * Opens the SQLite database with the pragmas the design depends on:
- *
- *   - journal_mode = WAL      concurrent readers while a writer commits
- *   - foreign_keys = ON       referential integrity is actually enforced
- *   - busy_timeout = 5000ms   brief lock contention waits instead of erroring
- *   - synchronous = NORMAL    safe with WAL, far fewer fsyncs
- *
- * These are runtime settings, not schema, so they are applied on every open.
+ * Creates an isolated PostgreSQL connection pool for the given connection string.
  */
-export function openDatabase(dbPath = config.dbPath) {
-  if (dbPath !== ":memory:") {
-    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+export function createPool(databaseUrl) {
+  if (!databaseUrl || typeof databaseUrl !== "string" || !databaseUrl.trim()) {
+    throw new Error("Cannot initialize PostgreSQL pool: connection URL is not configured. Set DATABASE_URL in environment.");
   }
-  const db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  db.pragma("busy_timeout = 5000");
-  db.pragma("synchronous = NORMAL");
-  db.pragma("trusted_schema = OFF");
-  return db;
+  const pool = new Pool({
+    connectionString: databaseUrl,
+    max: 15,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 5000,
+  });
+
+  pool.on("error", (err) => {
+    logger.error("Unexpected error on idle PostgreSQL client", { error: err.message });
+  });
+
+  // Provide transaction helper
+  pool.withTransaction = async function (callback) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await callback(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
+
+  return pool;
+}
+
+/**
+ * Creates or retrieves the shared PostgreSQL connection pool.
+ *
+ * Configured with standard timeouts and connection bounds suitable for
+ * gate terminal usage on industrial laptops or servers.
+ */
+export function openDatabase(databaseUrl = config.databaseUrl) {
+  if (activePool && activeConnectionString === databaseUrl) {
+    return activePool;
+  }
+  if (activePool) {
+    activePool.end().catch(() => {});
+    activePool = null;
+    activeConnectionString = null;
+  }
+
+  const pool = createPool(databaseUrl);
+  activePool = pool;
+  activeConnectionString = databaseUrl;
+  return pool;
+}
+
+export function closeDatabase() {
+  if (activePool) {
+    const pool = activePool;
+    activePool = null;
+    activeConnectionString = null;
+    return pool.end();
+  }
+  return Promise.resolve();
 }

@@ -1,5 +1,5 @@
+import { listSettings, readSetting, updateSetting } from "../data/settings.js";
 import { writeAudit } from "../lib/audit.js";
-import { nowIso } from "../lib/time.js";
 import { updateSettingSchema } from "../validation/schemas.js";
 
 /**
@@ -17,19 +17,14 @@ export function registerSettingsRoutes({ registrar, db }) {
     method: "GET",
     path: "/api/settings",
     access: ["administrator", "security_staff"],
-    handler: (req, res) => {
-      const rows = db.prepare("SELECT key, value, updated_at FROM settings ORDER BY key").all();
+    handler: async (req, res) => {
+      const rows = await listSettings(db);
       const visible =
         req.user.role === "administrator"
           ? rows
           : rows.filter((row) => GATE_READABLE_KEYS.has(row.key));
-      res.json({
-        settings: visible.map((row) => ({
-          key: row.key,
-          value: row.value,
-          updatedAt: row.updated_at,
-        })),
-      });
+
+      res.json({ settings: visible });
     },
   });
 
@@ -38,30 +33,24 @@ export function registerSettingsRoutes({ registrar, db }) {
     path: "/api/settings",
     access: ["administrator"],
     body: updateSettingSchema,
-    handler: (req, res) => {
+    handler: async (req, res) => {
       const { key, value } = req.body;
-      const timestamp = nowIso();
-      const previous = db.prepare("SELECT value FROM settings WHERE key = ?").get(key);
+      const previousValue = await readSetting(db, key);
 
-      db.prepare(
-        `INSERT INTO settings (key, value, updated_at, updated_by)
-         VALUES (?, ?, ?, ?)
-         ON CONFLICT(key) DO UPDATE SET
-           value = excluded.value,
-           updated_at = excluded.updated_at,
-           updated_by = excluded.updated_by`,
-      ).run(key, value, timestamp, req.user.id);
+      const updated = await updateSetting(db, key, value, req.user.id);
 
-      writeAudit(db, {
+      await writeAudit(db, {
         actorUserId: req.user.id,
         action: "setting.update",
         entityType: "setting",
         entityId: key,
-        oldValue: previous ? { value: previous.value } : null,
+        oldValue: previousValue ? { value: previousValue } : null,
         newValue: { value },
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
       });
 
-      res.json({ setting: { key, value, updatedAt: timestamp } });
+      res.json({ setting: updated });
     },
   });
 }

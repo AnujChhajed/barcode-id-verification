@@ -38,7 +38,8 @@
     "currently_inside": "Currently inside",
     "active_visitors": "Active visitors",
     "active_students": "Active students",
-    "scans_today": "Scans today"
+    "scans_today": "Scans today",
+    "active_people": "Active Personnel"
   },
   "check": {
     "header_title": "ABB",
@@ -102,24 +103,20 @@
     "offline": "Offline",
     "online": "Online",
     "gate": "Gate",
-
     "page_title": "Gate Verification",
     "page_subtitle": "Scan a student barcode or QR code to verify access.",
     "queued": "queued",
     "cached": "cached",
     "sync": "Sync",
-
     "lockdown_active": "EMERGENCY LOCKDOWN ACTIVE",
     "lockdown_sub": "All access is denied until the lockdown is lifted.",
     "lift_lockdown": "Lift Lockdown",
     "locked_down": "Locked Down",
-
     "entry": "Entry",
     "exit": "Exit",
     "no_gate": "No gate assigned",
     "select_gate": "Select a gate",
     "summary": "Summary",
-
     "shift_since": "Shift started at {{time}}",
     "shift_granted": "Granted",
     "shift_denied": "Denied",
@@ -127,10 +124,8 @@
     "shift_overrides": "Overrides",
     "shift_total": "Total scans this session:",
     "whos_inside": "Who's Inside",
-
     "visitor_walkin": "Visitor Walk-in",
     "incident_alert": "Report an Incident",
-
     "mode_scanner": "Barcode Scanner",
     "mode_scanner_sub": "USB or Bluetooth hardware scanner",
     "mode_camera": "Camera / QR Code",
@@ -139,32 +134,26 @@
     "mode_lookup": "Manual Lookup",
     "mode_lookup_sub": "Search for a student by name",
     "mode_active": "Active",
-
     "ready_title": "Ready to scan",
     "ready_sub": "Point your USB or Bluetooth scanner at the barcode on the front of the ID card, or type the admission number below.",
     "verifying": "Verifying…",
     "scan_placeholder": "Scan barcode or type admission number…",
     "verify_btn": "Verify",
     "enter_hint": "Scanner output is submitted automatically when you press",
-
     "camera_scanning": "Scanning…",
     "camera_hint": "Hold the ID card steady inside the frame, barcode facing the camera. Make sure it is well-lit.",
     "use_scanner": "Switch to barcode scanner",
-
     "lookup_title": "Manual student lookup",
     "lookup_sub": "Search for a student by name or admission number when their card is not available.",
     "lookup_placeholder": "Type student name or admission number…",
     "lookup_no_results": "No students found matching \"{{query}}\"",
-
     "queue_title": "Offline queue",
     "queue_pending": "{{count}} scans waiting to sync",
     "queue_sync_now": "Sync now",
     "queue_empty": "The offline queue is empty.",
     "queue_restore_hint": "These scans will be uploaded automatically once your connection is restored.",
-
     "recent_title": "Recent scans (this session)",
     "recent_count": "{{count}} scans this session",
-
     "result_granted": "ACCESS GRANTED",
     "result_denied": "ACCESS DENIED",
     "result_unknown": "UNKNOWN CODE",
@@ -175,19 +164,16 @@
     "result_auto_close": "This window closes automatically in {{secs}}s",
     "result_close": "Close",
     "result_override_btn": "Override this decision",
-
     "wl_detain": "⚠ DETAIN — Do NOT allow entry. Contact security immediately.",
     "wl_deny": "Watchlist: Entry Denied",
     "wl_warn": "Watchlist Warning",
     "wl_info": "Watchlist Notice",
     "wl_alert_level": "Alert level: {{level}}",
-
     "override_title": "Override Access Denial",
     "override_desc": "You are about to grant access to {{name}}, who was denied. This override will be permanently recorded against your operator account.",
     "override_reason": "Why are you overriding this decision?",
     "override_placeholder": "e.g. ID card malfunction — identity verified by passport",
     "override_grant": "Grant access",
-
     "visitor_title": "Register a Walk-in Visitor",
     "visitor_desc": "Register a walk-in visitor. They will receive a temporary 8-hour pass and their entry will be logged automatically.",
     "visitor_name": "Visitor's full name",
@@ -201,7 +187,6 @@
     "visitor_registering": "Registering…",
     "visitor_issue": "Issue pass and log entry",
     "visitor_issued": "Visitor pass issued — {{code}}",
-
     "panic_title": "🚨 Report a Security Incident",
     "panic_desc": "This will log an emergency security incident and immediately notify the system administrator.",
     "panic_label": "Describe what happened",
@@ -209,7 +194,6 @@
     "panic_sending": "Sending…",
     "panic_send": "Send incident alert"
   },
-
   "common2": {
     "refresh": "Refresh",
     "all": "All",
@@ -259,7 +243,6 @@
     "live_badge": "Live",
     "all_statuses": "All statuses"
   },
-
   "scanner": {
     "title": "Scanning Devices",
     "ready": "Scanner ready",
@@ -268,7 +251,6 @@
     "scan_btn": "Scan for devices",
     "api_unavailable": "Your browser does not support device detection. Use Chrome or Edge for automatic scanner recognition."
   },
-
   "ann": {
     "title": "Announcements",
     "unread_many": "You have {{count}} unread announcements. Please read them before starting your shift.",
@@ -297,7 +279,6 @@
     "priority_high": "High",
     "priority_urgent": "URGENT"
   },
-
   "shift": {
     "title": "My Shift",
     "active_sub": "Your shift is currently active.",
@@ -345,10 +326,9 @@
     "stat_visitors": "Visitors",
     "end_desc": "Add handover notes for the next operator before finishing."
   },
-
   "inside": {
     "title": "Who's Inside",
-    "subtitle": "Students and visitors currently on campus — updated in real time.",
+    "subtitle": "Workers, contractors, and visitors currently inside Plant 3 — updated in real time.",
     "gate_scan_link": "Gate Scan",
     "updated": "Updated {{time}}",
     "stat_inside": "Currently inside",
@@ -358,32 +338,52 @@
     "entries": "entries",
     "exits": "exits",
     "total_scans": "total scans today",
-    "search_ph": "Search name, admission no., programme…",
-    "type_all": "All types",
+    "search_ph": "Search name, worker ID, contractor, institution…",
+    "type_all": "All categories",
     "type_students": "Students only",
     "type_visitors": "Visitors only",
     "all_prog": "All programmes",
     "sort_last_in": "Last entry (newest)",
     "sort_first_in": "First entry (oldest)",
-    "sort_duration": "Longest on campus",
+    "sort_duration": "Longest inside",
     "sort_name_asc": "Name A → Z",
     "sort_name_desc": "Name Z → A",
     "sort_entries": "Most entries",
     "clear": "Clear",
     "empty": "No one tracked inside yet today",
-    "empty_sub": "Entries will appear here as students and visitors scan in at the gate.",
+    "empty_sub": "Entries will appear here as personnel scan in at the gate.",
     "go_scan": "Go to Gate Scan",
     "shown": "{{shown}} of {{total}} people shown",
     "on_campus": "{{count}} people on campus",
     "no_filter": "No results match your filter.",
     "footer": "Auto-refreshes every 30 seconds · Data covers today from midnight",
     "just_now": "just now",
-    "total_scans_today": "Total scans today",
+    "total_scans_today": "{{count}} total scans today",
     "empty_hint": "People will appear here as they scan in at the gate.",
     "go_to_gate": "Open the gate scanner",
-    "no_match": "No one matches your current filters."
+    "no_match": "No one matches your current filters.",
+    "updated_at": "Updated {{time}}",
+    "stat_workers": "Workers",
+    "stat_interns": "Interns",
+    "stat_exits": "Exits today",
+    "type_worker": "Workers only",
+    "type_intern": "Interns only",
+    "type_visitor": "Visitors only",
+    "sort_since_new": "Entry time (newest)",
+    "sort_since_old": "Entry time (oldest)",
+    "filtered_count": "{{shown}} of {{total}} people shown",
+    "total_count": "{{count}} people on site",
+    "missing_exit": "Missing exit scan",
+    "missing_exit_hint": "Entered on a previous calendar day without an exit scan recorded",
+    "missing_exit_count": "{{count}} missing exit scan",
+    "missing_exit_banner": "{{count}} previous-day entries have no exit scan recorded — please follow up at the gate.",
+    "since_at": "Since {{time}}",
+    "cat_worker": "Worker",
+    "cat_intern": "Intern",
+    "cat_visitor": "Visitor",
+    "minutes_ago": "{{count}}m ago",
+    "hours_ago": "{{count}}h ago"
   },
-
   "vis": {
     "title": "Visitor pass",
     "subtitle": "Issue a temporary QR-code pass that expires automatically.",
@@ -426,7 +426,6 @@
     "revoked": "Visitor pass has been revoked.",
     "empty": "No visitor passes have been issued in the last 14 days."
   },
-
   "appt": {
     "title": "Appointments",
     "sub_pending": "{{count}} visitor(s) expected today — confirm their arrival when they reach the gate.",
@@ -471,7 +470,6 @@
     "toast_registered": "Appointment registered successfully.",
     "toast_updated": "Appointment status updated."
   },
-
   "inc": {
     "title": "Incidents",
     "sub_open": "{{count}} open incident(s) requiring attention.",
@@ -540,7 +538,6 @@
     "type_damage": "Damaged or Destroyed Property",
     "type_altercation": "Physical Altercation or Fight"
   },
-
   "wl": {
     "title": "Watchlist",
     "subtitle": "Persons flagged for special attention at the gate.",
@@ -583,10 +580,9 @@
     "toast_added": "Entry added to the watchlist.",
     "toast_removed": "Watchlist entry has been deactivated."
   },
-
   "logs": {
     "title": "Access logs",
-    "subtitle": "Audit trail of every scan attempt.",
+    "subtitle": "Audit trail of every scan attempt on Plant 3.",
     "live_on": "Live on",
     "live_off": "Live",
     "from": "From",
@@ -594,12 +590,12 @@
     "tab_logs": "All logs",
     "tab_attend": "Today's attendance",
     "tab_denied": "Denied frequency",
-    "search_ph": "Search by scanned code…",
+    "search_ph": "Search by holder name…",
     "dec_all": "All decisions",
     "dec_allowed": "Allowed",
     "dec_denied": "Denied",
     "dec_unknown": "Unknown",
-    "dir_all": "In + Out",
+    "dir_all": "All directions",
     "dir_in": "Entry",
     "dir_out": "Exit",
     "all_gates": "All gates",
@@ -617,8 +613,8 @@
     "col_first": "First entry",
     "col_last": "Last exit",
     "col_status": "Status",
-    "attend_campus": "On campus",
-    "attend_left": "Has left campus",
+    "attend_campus": "On site",
+    "attend_left": "Left site",
     "no_entries": "No entries today.",
     "denied_sub": "Barcodes with the most denials in the selected date range — useful for spotting lost cards or persistent problems.",
     "no_denied": "No denied scans in this date range.",
@@ -635,12 +631,19 @@
     "no_entries_today": "No entry records for today.",
     "col_first_entry": "First entry",
     "col_last_exit": "Last exit",
-    "denied_desc": "Barcodes with the most denials in the selected date range — useful for spotting lost cards or persistent problems.",
+    "denied_desc": "Persons and codes with the most denials in the selected date range — useful for spotting invalid cards or persistent issues.",
     "preset_today": "Today",
     "preset_7d": "Last 7 days",
-    "preset_30d": "Last 30 days"
+    "preset_30d": "Last 30 days",
+    "result_all": "All results",
+    "result_approved": "Approved",
+    "result_rejected": "Rejected",
+    "result_unable": "Unable to verify",
+    "records_of_total": "{{count}} of {{total}} records",
+    "col_result": "Result",
+    "col_person": "Person",
+    "col_category": "Category"
   },
-
   "rpt": {
     "title": "Attendance Reports",
     "subtitle": "Programme-level attendance, absentees, and late arrivals.",
@@ -685,7 +688,6 @@
     "col_parent_contact": "Parent or guardian contact",
     "col_arrived_at": "Time of arrival"
   },
-
   "stu": {
     "title": "Students",
     "subtitle": "Manage student records used for gate verification.",
@@ -721,7 +723,6 @@
     "toast_graduated": "{{count}} student(s) marked as graduated.",
     "toast_suspended": "{{count}} student(s) have been suspended."
   },
-
   "sedit": {
     "breadcrumb": "Students",
     "new_label": "New Student",
@@ -793,7 +794,6 @@
     "toast_created": "Student created successfully!",
     "toast_saved": "Changes saved!"
   },
-
   "gates": {
     "title": "Gates",
     "subtitle": "Register the physical gates on campus so every scan is tagged with its location.",
@@ -810,7 +810,6 @@
     "added": "New gate added successfully.",
     "confirm_delete": "Are you sure you want to delete this gate? This cannot be undone."
   },
-
   "notifs": {
     "title": "Notifications",
     "subtitle": "Delivery log for all system-generated alerts.",
@@ -832,7 +831,6 @@
     "clear_filter": "Clear filter",
     "footer": "Notifications are written here by Edge Functions when events occur (denied access, suspension, etc.). Connect an email or SMS provider in the Edge Function to start delivering messages."
   },
-
   "users": {
     "title": "Users",
     "subtitle": "Accounts that can sign in to this system.",
@@ -861,7 +859,6 @@
     "created_toast": "User account created.",
     "admin_only_note": "Only administrators can create accounts or change roles."
   },
-
   "settings": {
     "title": "Settings",
     "subtitle": "System-wide configuration. Only administrators can change these values.",
@@ -881,7 +878,6 @@
     "save_btn": "Save settings",
     "saved": "Settings saved successfully."
   },
-
   "landing": {
     "nav_verify": "Verification System",
     "nav_features": "Features",
@@ -889,7 +885,6 @@
     "nav_access": "Access levels",
     "nav_check": "Check card",
     "nav_signin": "Sign in",
-
     "hero_badge": "Arusha Technical College — Gate System",
     "hero_h1_1": "Smart gate access",
     "hero_h1_2": "for every student.",
@@ -900,13 +895,11 @@
     "stat_uptime": "System uptime",
     "stat_modes": "Scan modes",
     "stat_audit": "Audit coverage",
-
     "trust_1": "Instant allow / deny decisions",
     "trust_2": "Full offline mode with local cache",
     "trust_3": "Automatic parent notifications",
     "trust_4": "PDF reports & ID card printing",
     "trust_5": "Public card-status check",
-
     "feat_label": "Features",
     "feat_title": "Everything the gate needs",
     "feat_sub": "Built specifically for ATC's security and administration requirements — fast, reliable, and simple to operate.",
@@ -925,22 +918,20 @@
     "feat_7_title": "Parent notifications",
     "feat_7_body": "Resend-powered emails alert parents automatically whenever their child is denied access at the gate.",
     "feat_8_title": "Offline queue",
-    "feat_8_body": "No internet? Scans are recorded locally in IndexedDB and sync to Supabase the moment the connection is restored.",
+    "feat_8_body": "No internet? Scans are recorded locally in IndexedDB and sync to the local database the moment the connection is restored.",
     "feat_9_title": "Multi-gate support",
     "feat_9_body": "Manage multiple named gates across campus. Each access log records which gate and which operator performed the scan.",
-
     "how_label": "How it works",
     "how_title": "Three steps per scan",
     "step_1_title": "Student presents ID card",
     "step_1_body": "The student holds their ID card up to the barcode scanner or, on mobile, to the device camera. The QR code on the back is read instantly.",
     "step_2_title": "System checks status in real time",
-    "step_2_body": "The scanned code is matched against the Supabase database. Status, suspension, expiry and time-based access rules are evaluated in under a second.",
+    "step_2_body": "The scanned code is matched against the local PostgreSQL database. Status, suspension, expiry and time-based access rules are evaluated in under a second.",
     "step_3_title": "Result displayed & logged",
     "step_3_body": "A full-screen ALLOW or DENY card shows the student's photo and details. The event is written to the permanent audit log and the parent is notified if access is denied.",
     "mock_gate": "Gate verification",
     "mock_granted": "ACCESS GRANTED",
     "mock_entry": "ENTRY",
-
     "access_label": "Access levels",
     "access_title": "Two roles, one system",
     "access_sub": "Separate permission tiers keep security staff focused and administrators in control.",
@@ -966,12 +957,10 @@
     "op_feat_5": "Access log view (read-only)",
     "op_feat_6": "Audio & visual decision feedback",
     "op_btn": "Sign in as operator",
-
     "cta_title": "Ready to secure the gate?",
     "cta_sub": "Sign in with your ATC staff credentials to start scanning.",
     "cta_login": "Staff login",
     "cta_check": "Check card status",
-
     "footer_tagline": "Barcode-based student access control for Arusha Technical College. Built for reliability, speed, and simplicity.",
     "footer_links": "Quick links",
     "footer_link_login": "Staff login",
@@ -985,9 +974,8 @@
     "footer_inst": "Institution",
     "footer_ver": "Version",
     "footer_copy": "© {{year}} Arusha Technical College · All rights reserved",
-    "footer_built": "Built with Supabase · React · TanStack Router"
+    "footer_built": "ABB Plant 3 Gate Verification System · React · TanStack Router · Node.js · PostgreSQL"
   },
-
   "dash": {
     "title": "Dashboard",
     "subtitle_admin": "A live overview of gate activity across the campus.",
@@ -1004,6 +992,8 @@
     "view_all": "View all",
     "no_scans": "No scans yet. Open the gate scanner to begin.",
     "dir_entry": "in",
-    "dir_exit": "out"
+    "dir_exit": "out",
+    "chart_capped": "Capped at {{limit}} recent events",
+    "series_scans": "Scans"
   }
 }

@@ -21,9 +21,9 @@ let adminCookie;
 let staffCookie;
 
 before(async () => {
-  context = createTestContext();
-  seedUser(context.db, ADMIN);
-  seedUser(context.db, STAFF);
+  context = await createTestContext();
+  await seedUser(context.db, ADMIN);
+  await seedUser(context.db, STAFF);
   server = await startServer(context.app);
   adminCookie = (await login(server.baseUrl, ADMIN.username, ADMIN.password)).cookie;
   staffCookie = (await login(server.baseUrl, STAFF.username, STAFF.password)).cookie;
@@ -31,7 +31,7 @@ before(async () => {
 
 after(async () => {
   if (server) await server.close();
-  context?.cleanup();
+  if (context) await context.cleanup();
 });
 
 const createPerson = (body, cookie = adminCookie) =>
@@ -75,7 +75,7 @@ describe("people — access control", () => {
     );
     assert.equal(res.status, 403);
     assert.equal(
-      context.db.prepare("SELECT id FROM people WHERE worker_ref = ?").get("SNEAK-1"),
+      (await context.db.query("SELECT id FROM persons WHERE worker_ref = $1", ["SNEAK-1"])).rows[0],
       undefined,
     );
   });
@@ -103,7 +103,9 @@ describe("people — access control", () => {
     );
     assert.equal(suspended.res.status, 403);
 
-    const stored = context.db.prepare("SELECT full_name, status FROM people WHERE id = ?").get(person.id);
+    const stored = (
+      await context.db.query("SELECT full_name, status FROM persons WHERE id = $1", [person.id])
+    ).rows[0];
     assert.equal(stored.full_name, "Boundary Worker");
     assert.equal(stored.status, "active");
   });
@@ -325,7 +327,9 @@ describe("people — updates", () => {
     assert.equal(res.status, 400);
     assert.ok(json.error.details.some((detail) => detail.path === "institutionName"));
 
-    const stored = context.db.prepare("SELECT category FROM people WHERE id = ?").get(person.id);
+    const stored = (
+      await context.db.query("SELECT category FROM persons WHERE id = $1", [person.id])
+    ).rows[0];
     assert.equal(stored.category, "worker");
   });
 
@@ -347,11 +351,12 @@ describe("people — updates", () => {
   });
 
   test("updates are recorded in the audit log", async () => {
-    const row = context.db
-      .prepare(
-        "SELECT action FROM audit_log WHERE entity_id = ? AND action = 'person.update' ORDER BY occurred_at DESC",
+    const row = (
+      await context.db.query(
+        "SELECT action FROM audit_logs WHERE entity_id = $1 AND action = 'person.update' ORDER BY occurred_at DESC",
+        [person.id],
       )
-      .get(person.id);
+    ).rows[0];
     assert.equal(row.action, "person.update");
   });
 });
@@ -398,11 +403,12 @@ describe("people — status changes", () => {
     assert.equal(terminated.res.status, 200);
     assert.equal(terminated.json.person.status, "terminated");
 
-    const audit = context.db
-      .prepare(
-        "SELECT reason FROM audit_log WHERE entity_id = ? AND action = 'person.status_change' ORDER BY occurred_at",
+    const audit = (
+      await context.db.query(
+        "SELECT reason FROM audit_logs WHERE entity_id = $1 AND action = 'person.status_change' ORDER BY occurred_at",
+        [person.id],
       )
-      .all(person.id);
+    ).rows;
     assert.equal(audit.length, 2);
     assert.equal(audit[0].reason, "Contract dispute under review");
     assert.equal(audit[1].reason, "Contract ended");

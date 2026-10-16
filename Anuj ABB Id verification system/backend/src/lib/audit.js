@@ -1,5 +1,4 @@
-import { newId } from "./ids.js";
-import { nowIso } from "./time.js";
+import { logger } from "./logger.js";
 
 /**
  * Business audit trail. Every privileged or state-changing action goes here.
@@ -10,21 +9,27 @@ import { nowIso } from "./time.js";
  *   - `oldValue` / `newValue` are JSON snapshots; callers must pass only the
  *     fields that actually changed and that are safe to retain.
  */
-export function writeAudit(db, entry) {
-  db.prepare(
-    `INSERT INTO audit_log
-       (id, actor_user_id, action, entity_type, entity_id, old_value, new_value, reason, occurred_at)
-     VALUES
-       (@id, @actor_user_id, @action, @entity_type, @entity_id, @old_value, @new_value, @reason, @occurred_at)`,
-  ).run({
-    id: newId(),
-    actor_user_id: entry.actorUserId ?? null,
-    action: entry.action,
-    entity_type: entry.entityType,
-    entity_id: entry.entityId ?? null,
-    old_value: entry.oldValue === undefined ? null : JSON.stringify(entry.oldValue),
-    new_value: entry.newValue === undefined ? null : JSON.stringify(entry.newValue),
-    reason: entry.reason ?? null,
-    occurred_at: nowIso(),
-  });
+export async function writeAudit(pool, entry) {
+  try {
+    await pool.query(
+      `INSERT INTO audit_logs (
+         actor_id, action, entity_type, entity_id,
+         old_values, new_values, reason, ip_address, user_agent, occurred_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW());`,
+      [
+        entry.actorUserId || null,
+        entry.action,
+        entry.entityType,
+        entry.entityId ? String(entry.entityId) : null,
+        entry.oldValue === undefined || entry.oldValue === null ? null : JSON.stringify(entry.oldValue),
+        entry.newValue === undefined || entry.newValue === null ? null : JSON.stringify(entry.newValue),
+        entry.reason || null,
+        entry.ipAddress || null,
+        entry.userAgent || null,
+      ],
+    );
+  } catch (error) {
+    logger.error("Failed to write audit log entry", { action: entry.action, error: error.message });
+  }
 }

@@ -11,8 +11,10 @@ import { registerCredentialRoutes } from "./routes/credentials.routes.js";
 import { registerGateRoutes } from "./routes/gate.routes.js";
 import { registerHealthRoutes } from "./routes/health.routes.js";
 import { registerPeopleRoutes } from "./routes/people.routes.js";
+import { registerPhotoRoutes } from "./routes/photos.routes.js";
 import { registerSettingsRoutes } from "./routes/settings.routes.js";
 import { registerUserRoutes } from "./routes/users.routes.js";
+import { registerVisitRoutes } from "./routes/visits.routes.js";
 
 /**
  * The complete set of unauthenticated routes. Anything public that is not
@@ -68,6 +70,8 @@ export function createApp({
   registerPeopleRoutes(context);
   registerCredentialRoutes(context);
   registerGateRoutes(context);
+  registerVisitRoutes(context);
+  registerPhotoRoutes(context);
 
   assertPublicRoutes(registrar.inventory);
 

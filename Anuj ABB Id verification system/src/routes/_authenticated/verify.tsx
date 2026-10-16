@@ -1,7 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  gateApi,
+  peopleApi,
+  settingsApi,
+  visitsApi,
+  photosApi,
+  type GateDirection,
+} from "@/lib/api";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/lib/auth-context";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -208,14 +215,24 @@ function VerifyPage() {
   // ── Remote data ──
   const { data: gates } = useQuery({
     queryKey: ["active-gates"],
-    queryFn: async () =>
-      (await supabase.from("gates").select("id,name").eq("is_active", true).order("name")).data ??
-      [],
+    queryFn: async () => [
+      { id: "Plant 3 - Main Gate", name: "Main Gate - Gate 1" },
+      { id: "Plant 3 - Material Gate", name: "Material Gate - Gate 2" },
+      { id: "Plant 3 - Canteen Turnstile", name: "Canteen Turnstile" },
+      { id: "Plant 3 - Visitor Gate", name: "Visitor Gate" },
+    ],
   });
 
   const { data: settings } = useQuery({
     queryKey: ["scan-settings"],
-    queryFn: async () => (await supabase.from("settings").select("key,value")).data ?? [],
+    queryFn: async () => {
+      try {
+        const res = await settingsApi.list();
+        return res.settings.map((s) => ({ key: s.key, value: s.value }));
+      } catch {
+        return [];
+      }
+    },
     refetchInterval: 30_000,
   });
 
@@ -295,16 +312,33 @@ function VerifyPage() {
   };
 
   const syncStudents = async () => {
-    toast.info("Caching students for offline use…");
-    const { data } = await supabase
-      .from("students")
-      .select(
-        "id,full_name,admission_number,barcode,programme,nta_level,year_of_study,status,photo_url,expires_at,is_visitor,parent_email,parent_phone,suspension_reason,suspended_until",
-      );
-    if (data) {
-      await cacheStudents(data as CachedStudent[]);
-      toast.success(`Cached ${data.length} students offline`);
-      refreshOfflineCounts();
+    toast.info("Caching personnel for offline use…");
+    try {
+      const res = await peopleApi.list({ limit: 500 });
+      if (res.people) {
+        const mapped: CachedStudent[] = res.people.map((p) => ({
+          id: p.id,
+          full_name: p.fullName,
+          admission_number: p.badgeNumber,
+          barcode: p.badgeNumber,
+          programme: p.category,
+          nta_level: p.companyName ?? "",
+          year_of_study: 1,
+          status: p.status,
+          photo_url: p.photoPath ? photosApi.urlFor(p.id) : null,
+          expires_at: null,
+          is_visitor: p.category === "visitor",
+          parent_email: p.email,
+          parent_phone: p.phone,
+          suspension_reason: null,
+          suspended_until: null,
+        }));
+        await cacheStudents(mapped);
+        toast.success(`Cached ${mapped.length} personnel offline`);
+        refreshOfflineCounts();
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to cache personnel");
     }
   };
 
@@ -321,13 +355,16 @@ function VerifyPage() {
     const items = await pendingQueue();
     if (!items.length) return;
     toast.info(`Syncing ${items.length} queued scans…`);
-    for (const item of items) {
-      const { id, ...payload } = item;
-      const { error } = await supabase.from("access_logs").insert(payload as any);
-      if (!error && id) await clearQueueItem(id);
+    try {
+      await gateApi.syncQueue(items);
+      for (const item of items) {
+        if (item.id) await clearQueueItem(item.id);
+      }
+      refreshOfflineCounts();
+      toast.success("Queue synced");
+    } catch (e: any) {
+      toast.error(e.message || "Queue sync failed");
     }
-    refreshOfflineCounts();
-    toast.success("Queue synced");
   };
 
   // ── Audio feedback ──
@@ -355,9 +392,7 @@ function VerifyPage() {
     setLockdownBusy(true);
     const newVal = !lockdown;
     try {
-      await supabase
-        .from("settings")
-        .upsert({ key: "lockdown_active", value: newVal }, { onConflict: "key" });
+      await settingsApi.update("lockdown_active", String(newVal));
       setLockdown(newVal);
       qc.invalidateQueries({ queryKey: ["scan-settings"] });
       toast[newVal ? "error" : "success"](
@@ -393,18 +428,29 @@ function VerifyPage() {
         // ── Lockdown ──────────────────────────────────────────────────────────
         if (lockdown) {
           const lockReason = "Emergency lockdown — access suspended";
-          const logPayload = {
-            scanned_code: scanned,
-            student_id: null,
-            decision: "denied" as Decision,
-            reason: lockReason,
-            scanned_by: user?.id ?? null,
-            scanned_at: new Date().toISOString(),
-            direction,
-            gate_id: gateId || null,
-          };
-          if (online) await supabase.from("access_logs").insert(logPayload as any);
-          else await enqueueScan(logPayload as any);
+          let insertedLogId: string | null = null;
+          if (online) {
+            try {
+              const inc = await gateApi.incident({
+                note: `Lockdown rejection for scan: ${scanned}`,
+                gateId: gateId || "Plant 3 - Main Gate",
+                direction,
+              });
+              insertedLogId = inc.eventId;
+            } catch {}
+          } else {
+            await enqueueScan({
+              scanned_code: scanned,
+              student_id: null,
+              decision: "denied",
+              reason: lockReason,
+              scanned_by: user?.id ?? null,
+              scanned_at: new Date().toISOString(),
+              direction,
+              gate_id: gateId || null,
+            });
+            refreshOfflineCounts();
+          }
           lastScanRef.current = { code: scanned, at: Date.now() };
           const r: Result = {
             decision: "denied",
@@ -412,6 +458,7 @@ function VerifyPage() {
             scannedCode: scanned,
             scannedAt: new Date(),
             direction,
+            logId: insertedLogId,
           };
           setResult(r);
           setRecent((p) => [r, ...p].slice(0, 10));
@@ -427,18 +474,29 @@ function VerifyPage() {
           const currentTime = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
           if (!accessDays.includes(day) || currentTime < accessStart || currentTime >= accessEnd) {
             const closedReason = `Gate closed · access hours ${accessStart}–${accessEnd}`;
-            const logPayload = {
-              scanned_code: scanned,
-              student_id: null,
-              decision: "denied" as Decision,
-              reason: closedReason,
-              scanned_by: user?.id ?? null,
-              scanned_at: new Date().toISOString(),
-              direction,
-              gate_id: gateId || null,
-            };
-            if (online) await supabase.from("access_logs").insert(logPayload as any);
-            else await enqueueScan(logPayload as any);
+            let insertedLogId: string | null = null;
+            if (online) {
+              try {
+                const inc = await gateApi.incident({
+                  note: `After hours rejection for scan: ${scanned} (${closedReason})`,
+                  gateId: gateId || "Plant 3 - Main Gate",
+                  direction,
+                });
+                insertedLogId = inc.eventId;
+              } catch {}
+            } else {
+              await enqueueScan({
+                scanned_code: scanned,
+                student_id: null,
+                decision: "denied",
+                reason: closedReason,
+                scanned_by: user?.id ?? null,
+                scanned_at: new Date().toISOString(),
+                direction,
+                gate_id: gateId || null,
+              });
+              refreshOfflineCounts();
+            }
             lastScanRef.current = { code: scanned, at: Date.now() };
             const r: Result = {
               decision: "denied",
@@ -446,6 +504,7 @@ function VerifyPage() {
               scannedCode: scanned,
               scannedAt: new Date(),
               direction,
+              logId: insertedLogId,
             };
             setResult(r);
             setRecent((p) => [r, ...p].slice(0, 10));
@@ -455,145 +514,93 @@ function VerifyPage() {
           }
         }
 
-        // ── Student lookup ────────────────────────────────────────────────────
-        let student: CachedStudent | null = null;
-        if (online) {
-          const { data } = await supabase
-            .from("students")
-            .select("*")
-            .or(`barcode.eq.${scanned},admission_number.eq.${scanned}`)
-            .maybeSingle();
-          student = (data as CachedStudent | null) ?? null;
-        } else {
-          student = await findCachedStudent(scanned);
-        }
-
+        // ── Scan verification (Online via Express API or Offline via Cache) ──
         let decision: Decision = "unknown";
         let reason: string | undefined;
+        let student: CachedStudent | undefined;
         let photoUrl: string | null = null;
-        const isPassExpired = (exp: string) => {
-          const parsed = exp.length <= 10 ? new Date(`${exp}T23:59:59`) : new Date(exp);
-          return parsed < new Date();
-        };
-
-        if (!student) {
-          decision = "unknown";
-          reason = online ? "No student matches this code" : "Offline · not in cache";
-        } else if (student.status === "suspended") {
-          const until = student.suspended_until;
-          if (until && new Date(until) < new Date()) {
-            decision = "allowed";
-          } else {
-            decision = "denied";
-            reason = student.suspension_reason
-              ? `Suspended: ${student.suspension_reason}`
-              : "Student is suspended";
-            if (until) reason += ` · until ${until}`;
-          }
-        } else if (student.status !== "active") {
-          decision = "denied";
-          reason = `Student is ${student.status}`;
-        } else if (student.expires_at && isPassExpired(student.expires_at)) {
-          decision = "denied";
-          reason = `Pass expired ${student.expires_at}`;
-        } else {
-          decision = "allowed";
-        }
-
-        // ── Watchlist check ───────────────────────────────────────────────────
-        // Even if the student is otherwise allowed, a watchlist match may
-        // override the decision (deny/detain) or add a visible warning (info/warn).
-        let watchlistHit: WatchlistHit | undefined;
-        if (online) {
-          const now = new Date().toISOString();
-          const { data: wl } = await supabase
-            .from("watchlist")
-            .select("alert_level,full_name,reason,description,photo_url")
-            .eq("is_active", true)
-            .or(`expires_at.is.null,expires_at.gt.${now}`)
-            .or(`barcode.eq.${scanned},id_number.eq.${scanned}`)
-            .limit(1)
-            .maybeSingle();
-          if (wl) {
-            // Resolve signed URL for the photo if present
-            let photoSrc: string | null = null;
-            if (wl.photo_url) {
-              const { data: signed } = await supabase.storage
-                .from("student-photos")
-                .createSignedUrl(wl.photo_url, 120);
-              photoSrc = signed?.signedUrl ?? null;
-            }
-            watchlistHit = {
-              alert_level: wl.alert_level,
-              full_name: wl.full_name,
-              reason: wl.reason,
-              description: wl.description ?? null,
-              photo_url: wl.photo_url ?? null,
-              photoSrc,
-            };
-            // deny / detain — force denial regardless of student status
-            if (wl.alert_level === "deny" || wl.alert_level === "detain") {
-              decision = "denied";
-              reason = `WATCHLIST (${wl.alert_level.toUpperCase()}): ${wl.reason}`;
-            }
-          }
-        }
-
-        if (online && student?.photo_url) {
-          const { data: signed } = await supabase.storage
-            .from("student-photos")
-            .createSignedUrl(student.photo_url, 60);
-          photoUrl = signed?.signedUrl ?? null;
-        }
-
-        const logPayload = {
-          scanned_code: scanned,
-          student_id: student?.id ?? null,
-          decision,
-          reason: reason ?? null,
-          scanned_by: user?.id ?? null,
-          scanned_at: new Date().toISOString(),
-          direction,
-          gate_id: gateId || null,
-        };
-
         let insertedLogId: string | null = null;
-        if (online) {
-          const { data: logRow } = await supabase
-            .from("access_logs")
-            .insert(logPayload as any)
-            .select("id")
-            .single();
-          insertedLogId = logRow?.id ?? null;
 
-          if (decision === "denied" && student?.parent_email) {
-            supabase.functions
-              .invoke("notify-parent", {
-                body: {
-                  student_id: student.id,
-                  log_id: insertedLogId,
-                  reason: reason ?? null,
-                  scanned_at: logPayload.scanned_at,
-                },
-              })
-              .catch(() => {});
+        if (online) {
+          try {
+            const apiRes = await gateApi.verify(scanned, direction as GateDirection);
+            if (apiRes.result === "APPROVED") {
+              decision = "allowed";
+            } else if (apiRes.result === "DENIED") {
+              decision = "denied";
+            } else {
+              decision = "unknown";
+            }
+            reason = apiRes.reasonText || apiRes.reasonCode || undefined;
+            insertedLogId = apiRes.eventId;
+
+            if (apiRes.person) {
+              photoUrl = apiRes.person.photoPath ? photosApi.urlFor(apiRes.person.id) : null;
+              student = {
+                id: apiRes.person.id,
+                full_name: apiRes.person.fullName,
+                admission_number: apiRes.person.badgeNumber,
+                barcode: scanned,
+                programme: apiRes.person.category,
+                nta_level: apiRes.person.companyName ?? "",
+                year_of_study: 1,
+                status: apiRes.person.status,
+                photo_url: photoUrl,
+                expires_at: apiRes.credential?.validTo ?? null,
+                is_visitor: apiRes.person.category === "visitor",
+                parent_email: apiRes.person.email,
+                parent_phone: apiRes.person.phone,
+                suspension_reason: null,
+                suspended_until: null,
+              };
+            }
+          } catch (err: any) {
+            decision = "unknown";
+            reason = err?.message || "Verification request failed";
           }
         } else {
-          await enqueueScan(logPayload as any);
+          // Offline mode verification
+          const cached = await findCachedStudent(scanned);
+          if (!cached) {
+            decision = "unknown";
+            reason = "Offline · not in cache";
+          } else if (cached.status !== "active") {
+            decision = "denied";
+            reason = `Personnel is ${cached.status}`;
+            student = cached;
+          } else if (cached.expires_at && new Date(cached.expires_at) < new Date()) {
+            decision = "denied";
+            reason = `Badge expired ${cached.expires_at}`;
+            student = cached;
+          } else {
+            decision = "allowed";
+            student = cached;
+          }
+
+          await enqueueScan({
+            scanned_code: scanned,
+            student_id: student?.id ?? null,
+            decision,
+            reason: reason ?? null,
+            scanned_by: user?.id ?? null,
+            scanned_at: new Date().toISOString(),
+            direction,
+            gate_id: gateId || null,
+          });
           refreshOfflineCounts();
+          photoUrl = student?.photo_url ?? null;
         }
 
         lastScanRef.current = { code: scanned, at: Date.now() };
         const r: Result = {
           decision,
           reason,
-          student: student ?? undefined,
+          student,
           photoUrl,
           scannedCode: scanned,
           scannedAt: new Date(),
           direction,
           logId: insertedLogId,
-          watchlistHit,
         };
         setResult(r);
         setRecent((p) => [r, ...p].slice(0, 10));
@@ -748,14 +755,25 @@ function VerifyPage() {
     }
     setLookupBusy(true);
     try {
-      const { data } = await supabase
-        .from("students")
-        .select(
-          "id,full_name,admission_number,barcode,programme,nta_level,year_of_study,status,photo_url,expires_at,is_visitor,parent_email,parent_phone,suspension_reason,suspended_until",
-        )
-        .or(`full_name.ilike.%${q}%,admission_number.ilike.%${q}%`)
-        .limit(10);
-      setLookupResults((data as CachedStudent[]) ?? []);
+      const { people } = await peopleApi.list({ query: q, limit: 10 });
+      const mapped: CachedStudent[] = people.map((p) => ({
+        id: p.id,
+        full_name: p.fullName,
+        admission_number: p.badgeNumber,
+        barcode: p.badgeNumber,
+        programme: p.category,
+        nta_level: p.companyName ?? "",
+        year_of_study: 1,
+        status: p.status,
+        photo_url: p.photoPath ? photosApi.urlFor(p.id) : null,
+        expires_at: null,
+        is_visitor: p.category === "visitor",
+        parent_email: p.email,
+        parent_phone: p.phone,
+        suspension_reason: null,
+        suspended_until: null,
+      }));
+      setLookupResults(mapped);
     } catch {
       setLookupResults([]);
     } finally {
@@ -778,40 +796,14 @@ function VerifyPage() {
     setVisitorBusy(true);
     const tomorrow = defaultVisitorDate();
     try {
-      const now = new Date();
-      const year = now.getFullYear();
-      const seq = String(now.getTime()).slice(-5);
-      const code = `VIS/${year}/${seq}`;
-      const expiresAt = `${visitorValidUntil || tomorrow}T${visitorValidTime || "23:59"}`;
-      const { data: vis, error } = await supabase
-        .from("students")
-        .insert({
-          full_name: visitorName.trim(),
-          admission_number: code,
-          barcode: code,
-          is_visitor: true,
-          status: "active",
-          expires_at: expiresAt,
-          parent_phone: visitorPhone || null,
-          suspension_reason: visitorPurpose
-            ? `Purpose: ${visitorPurpose}${visitorHost ? ` | Host: ${visitorHost}` : ""}`
-            : null,
-        } as any)
-        .select("*")
-        .single();
-      if (error) throw error;
-      // Log the walk-in entry directly — bypass access hours since the operator
-      // is physically present and registering this visitor at the gate right now.
-      await supabase.from("access_logs").insert({
-        scanned_code: code,
-        student_id: vis?.id ?? null,
-        decision: "allowed",
-        direction: "in",
-        reason: "Visitor walk-in",
-        scanned_by: user?.id ?? null,
-        scanned_at: new Date().toISOString(),
-        gate_id: gateId || null,
-      } as any);
+      const res = await visitsApi.walkIn({
+        fullName: visitorName.trim(),
+        phone: visitorPhone || undefined,
+        purposeOfVisit: visitorPurpose || "Plant visit",
+        personToMeet: visitorHost || "ABB Host",
+        validUntil: visitorValidUntil || tomorrow,
+        validTime: visitorValidTime || "17:00",
+      });
       setShowVisitorModal(false);
       setVisitorName("");
       setVisitorPhone("");
@@ -819,7 +811,7 @@ function VerifyPage() {
       setVisitorHost("");
       setVisitorValidUntil(tomorrow);
       setVisitorValidTime("17:00");
-      toast.success(t("verify.visitor_issued", { code }));
+      toast.success(t("verify.visitor_issued", { code: res.code }));
     } catch (e: any) {
       toast.error(e.message || "Failed to register visitor");
     } finally {
@@ -829,24 +821,19 @@ function VerifyPage() {
 
   // ── Access override ──
   const doOverride = async () => {
-    if (!result?.logId) {
-      toast.error("No log entry to override");
-      return;
-    }
     if (!overrideReason.trim()) {
       toast.error("Override reason is required");
       return;
     }
     setOverrideBusy(true);
     try {
-      await supabase
-        .from("access_logs")
-        .update({
-          decision: "allowed",
-          overridden: true,
-          operator_note: overrideReason.trim(),
-        } as any)
-        .eq("id", result.logId);
+      await gateApi.override({
+        code: result?.scannedCode || "OVERRIDE",
+        personId: result?.student?.id,
+        reason: overrideReason.trim(),
+        direction,
+        gateId: gateId || "Plant 3 - Main Gate",
+      });
       setResult((r) =>
         r ? { ...r, decision: "allowed", reason: `Override: ${overrideReason}` } : r,
       );
@@ -871,16 +858,11 @@ function VerifyPage() {
   const triggerPanic = async () => {
     setPanicBusy(true);
     try {
-      await supabase.from("access_logs").insert({
-        scanned_code: "INCIDENT",
-        student_id: null,
-        decision: "denied",
-        reason: `INCIDENT ALERT: ${panicNote || "Security incident at gate"}`,
-        scanned_by: user?.id ?? null,
-        scanned_at: new Date().toISOString(),
+      await gateApi.incident({
+        note: `INCIDENT ALERT: ${panicNote || "Security incident at gate"}`,
+        gateId: gateId || "Plant 3 - Main Gate",
         direction,
-        gate_id: gateId || null,
-      } as any);
+      });
       toast.error("🚨 Incident alert logged — admin has been notified", { duration: 8000 });
       setShowPanic(false);
       setPanicNote("");

@@ -1,7 +1,7 @@
 node_modules
 
 # Local database files and their WAL sidecars — never committed
-data/
+/data/
 *.db
 *.db-wal
 *.db-shm

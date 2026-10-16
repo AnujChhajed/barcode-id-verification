@@ -1,236 +1,256 @@
-# 🎓 Barcode Gate Verification System
+# ABB Plant 3 — Gate Verification & Credential Management System
 
-A real-time campus gate access control system built for colleges and institutions. Gate operators scan student ID barcodes to grant or deny entry, while administrators manage students, visitors, incidents, reports, and system settings — all from a single web interface.
+Industrial gate access control and ID verification platform for **ABB Plant 3**.
 
-**Supports English and Swahili (EN / SW).**
-
----
-
-## ✨ Features
-
-| Area              | What it does                                                                                              |
-| ----------------- | --------------------------------------------------------------------------------------------------------- |
-| **Gate Scan**     | USB/Bluetooth barcode scanner, camera QR scan, or manual lookup — real-time allow/deny with photo display |
-| **Dashboard**     | Live stats, hourly & weekly charts, denial surge alerts, live feed of recent scans                        |
-| **Students**      | Add, edit, suspend, import via CSV, bulk photo upload, download ID cards (PDF)                            |
-| **Visitors**      | Issue time-limited visitor passes with CODE128 barcode, print or download PDF                             |
-| **Inside Now**    | Live view of who is currently on campus                                                                   |
-| **Reports**       | Daily attendance, absentees, late arrivals — export CSV or PDF                                            |
-| **Incidents**     | Report and manage security incidents with severity levels                                                 |
-| **Announcements** | Post notices for gate operators to acknowledge before their shift                                         |
-| **Gates**         | Register physical gates so every scan is tagged by location                                               |
-| **Settings**      | Access hours, anti-passback, session timeout, denial surge threshold                                      |
-| **Offline mode**  | Caches students locally so scanning works without internet                                                |
-| **i18n**          | Full English and Swahili translations                                                                     |
+Engineered as a **100% self-hosted, independent, and portable** system designed to run locally on company hardware (e.g., security gate laptop or plant server) without dependencies on developer accounts, external cloud services, or hosted databases.
 
 ---
 
-## 🛠️ Tech Stack
+## 1. System Architecture & Independence
 
-- **Frontend** — React 19, TanStack Router, TanStack Query
-- **Styling** — Tailwind CSS v4, shadcn/ui (Radix UI)
-- **Backend / Database** — [Supabase](https://supabase.com) (Postgres + Auth + Realtime + Storage)
-- **Build tool** — Vite 7
-- **PDF generation** — jsPDF + JsBarcode
-- **Barcode scanning** — Quagga2 (camera), Web HID API (USB/BT scanner detection)
-- **Language** — TypeScript
+- **Frontend:** React 19, TypeScript, TanStack Router, TanStack Query, Vanilla CSS & Tailwind v4, Radix UI.
+- **Backend API:** Node.js (>= 22), Express 5, connection pool (`pg`), scrypt password hashing (RFC 7914), secure cookie sessions.
+- **Database:** Local PostgreSQL 18 server (`abb_gate_verification`).
+- **Data Access:** Strict backend-only connection via `DATABASE_URL` in `backend/.env`. No database credentials or connection strings are ever exposed in frontend bundles or `VITE_*` variables.
+- **Zero Cloud Dependencies:** All operations (authentication, gate event recording, photo viewing, reporting, personnel and contractor management) run on local infrastructure. No Neon, Supabase, or external database hosting is required.
 
 ---
 
-## ⚙️ Prerequisites
+## 2. Prerequisites for Company Laptop
 
-Make sure you have these installed before you begin:
+Before running the system on a new Windows laptop, ensure the following are installed:
 
-| Tool        | Minimum version               | Download            |
-| ----------- | ----------------------------- | ------------------- |
-| **Node.js** | 18 or newer (20+ recommended) | https://nodejs.org  |
-| **npm**     | 9 or newer (comes with Node)  | —                   |
-| **Git**     | any recent version            | https://git-scm.com |
+| Component | Minimum Version | Download / Install Command |
+|---|---|---|
+| **Operating System** | Windows 10 / 11 (64-bit) | Standard Windows install |
+| **Node.js** | Node.js 22 LTS or 24 | [https://nodejs.org](https://nodejs.org) or `winget install OpenJS.NodeJS.LTS` |
+| **PostgreSQL** | PostgreSQL 16, 17, or 18 | [https://www.postgresql.org/download/windows/](https://www.postgresql.org/download/windows/) or `winget install PostgreSQL.PostgreSQL.18` |
+| **Shell** | Windows PowerShell 5.1+ | Built into Windows |
 
-Check your versions:
-
-```bash
+Verify installation in PowerShell:
+```powershell
 node --version
 npm --version
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" --version
 ```
 
 ---
 
-## 🚀 Getting Started
+## 3. Quick Start (Automated PowerShell Setup)
 
-### 1. Clone the repository
+For a fully automated deployment on the company laptop:
 
-```bash
-git clone https://github.com/YOUR_USERNAME/barcode_system.git
-cd barcode_system
+### Step 1: Open PowerShell as Administrator
+Navigate to the project folder:
+```powershell
+cd "C:\path\to\Anuj ABB Id verification system"
 ```
 
-### 2. Install dependencies
+### Step 2: Run Database Setup Script
+```powershell
+.\scripts\setup-db.ps1
+```
 
-```bash
+The script will:
+1. Detect your local PostgreSQL binaries and service.
+2. Prompt for your local PostgreSQL superuser password securely (hidden from screen, never saved).
+3. Check whether database `abb_gate_verification` already exists (it will **never** drop or overwrite existing databases).
+4. Create the `abb_gate_verification` database with UTF-8 encoding if missing.
+5. Create a dedicated application role `abb_app` with least-privilege permissions (or configure standard access).
+6. Update `backend/.env` automatically with the local `DATABASE_URL`.
+7. Execute versioned SQL migrations (`0001_init.sql` and `0002_seed_plant3.sql`) inside safe transactions.
+8. Verify that all 10 schema tables and views are active.
+9. Launch the interactive administrator bootstrap prompt.
+
+### Step 3: Launch the Application
+```powershell
+.\scripts\start-all.ps1
+```
+This script launches the Express backend on port `4000`, the frontend on port `5173`, and opens the browser.
+
+---
+
+## 4. Manual Setup & Deployment Instructions
+
+If you prefer to configure PostgreSQL manually using standard PostgreSQL commands:
+
+### 1. Create the Database
+In PowerShell:
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -c "CREATE DATABASE abb_gate_verification WITH ENCODING 'UTF8';"
+```
+
+### 2. Create the Application Role
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -U postgres -h localhost -d abb_gate_verification -c @"
+CREATE ROLE abb_app WITH LOGIN PASSWORD 'ChooseAStrongAppPassword';
+GRANT CONNECT ON DATABASE abb_gate_verification TO abb_app;
+GRANT USAGE, CREATE ON SCHEMA public TO abb_app;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO abb_app;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO abb_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO abb_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO abb_app;
+"@
+```
+
+### 3. Configure Backend Environment
+Copy the example environment file:
+```powershell
+Copy-Item "backend\.env.example" "backend\.env"
+```
+Edit `backend/.env` and set:
+```ini
+PORT=4000
+HOST=127.0.0.1
+NODE_ENV=production
+DATABASE_URL=postgresql://abb_app:ChooseAStrongAppPassword@localhost:5432/abb_gate_verification
+CORS_ORIGINS=http://localhost:5173,http://localhost:8080
+SESSION_COOKIE_NAME=abb_session
+SESSION_TIMEOUT_MINUTES=30
+SESSION_COOKIE_SECURE=false
+LOGIN_RATE_WINDOW_MS=900000
+LOGIN_RATE_MAX=5
+```
+
+### 4. Install Dependencies
+```powershell
+# Install backend dependencies
+cd backend
+npm install
+
+# Install frontend dependencies
+cd ..
 npm install
 ```
 
-### 3. Set up Supabase
-
-This project uses **Supabase** as its backend. You need your own Supabase project (free tier is enough).
-
-1. Go to [https://supabase.com](https://supabase.com) and sign in (or create a free account)
-2. Click **"New project"** and fill in the project name and database password
-3. Wait for the project to finish provisioning (about 1–2 minutes)
-4. Go to **Settings → API** and copy:
-   - **Project URL** (looks like `https://xxxxxxxxxxxx.supabase.co`)
-   - **anon / public key** (the long JWT string under "Project API keys")
-
-### 4. Create your `.env` file
-
-Copy the example file and fill in your Supabase values:
-
-```bash
-# Windows
-copy .env.example .env
-
-# macOS / Linux
-cp .env.example .env
-```
-
-Open `.env` and replace the placeholder values:
-
-```env
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-public-key-here
-VITE_SUPABASE_PROJECT_ID=your-project-id
-
-SUPABASE_URL=https://your-project-id.supabase.co
-SUPABASE_PUBLISHABLE_KEY=your-anon-public-key-here
-```
-
-> ⚠️ **Never commit `.env` to Git.** It is already listed in `.gitignore`.
-
-### 5. Set up the database schema
-
-The database tables need to be created in your Supabase project. In the Supabase dashboard:
-
-1. Go to **SQL Editor**
-2. Run the schema migrations found in the `supabase/migrations/` folder (if present), **or** ask the project owner for the SQL schema script
-
-The main tables the app uses are:
-
-| Table           | Purpose                                       |
-| --------------- | --------------------------------------------- |
-| `students`      | Students and visitor pass records             |
-| `access_logs`   | Every scan event (allowed / denied / unknown) |
-| `gates`         | Physical gate locations                       |
-| `settings`      | System configuration key-value store          |
-| `incidents`     | Security incident reports                     |
-| `announcements` | Operator notices                              |
-| `watchlist`     | Flagged individuals                           |
-| `notifications` | System-generated alert log                    |
-
-### 6. Create the first admin user
-
-1. In Supabase → **Authentication → Users**, click **"Invite user"** and enter your email
-2. Check your email and complete sign-up
-3. In **SQL Editor**, run:
-   ```sql
-   UPDATE auth.users SET raw_user_meta_data = '{"role":"admin"}' WHERE email = 'your@email.com';
-   ```
-   This promotes your account to admin so you can access Settings, Students, Gates, etc.
-
-### 7. Run the development server
-
-```bash
-npm run dev
-```
-
-The app will be available at **http://localhost:8080**
-
-To access from another device on the same Wi-Fi network (e.g. a phone or tablet for the gate scanner), use your machine's local IP address instead of `localhost`:
-
-```
-http://192.168.x.x:8080
+### 5. Run Migrations
+From the `backend` directory:
+```powershell
+npm run migrate
 ```
 
 ---
 
-## 📦 Build for Production
+## 5. First Administrator Account Creation
 
-```bash
-npm run build
+To ensure the company owner maintains independent and secure administrative ownership, no hardcoded administrator accounts or public default credentials exist in the database seeds.
+
+Run the secure administrator bootstrap CLI:
+```powershell
+cd backend
+npm run bootstrap-admin
 ```
 
-Output goes to the `dist/` folder. You can deploy it to any static host (Netlify, Vercel, Cloudflare Pages, etc.).
+Follow the interactive prompts:
+```
+--- Create Plant 3 Administrator Account ---
+Username: owner.admin
+Full Name: Plant 3 Director
+Email (optional): owner@plant3.abb.com
+Password (min 12 chars): ************
+Confirm Password: ************
+```
+The password is salted and hashed using **scrypt (RFC 7914)** before saving to the `users` table.
 
-Preview the production build locally:
+---
 
-```bash
-npm run preview
+## 6. Daily Operation: Starting and Stopping
+
+### Starting Both Services:
+```powershell
+.\scripts\start-all.ps1
+```
+
+### Starting Manually:
+- **Backend (Port 4000):**
+  ```powershell
+  cd backend
+  npm start
+  ```
+- **Frontend (Port 5173):**
+  ```powershell
+  npm run dev
+  ```
+Access the application at [http://localhost:5173](http://localhost:5173).
+
+---
+
+## 7. Database Backup and Disaster Recovery
+
+### Automated Backup Script
+```powershell
+.\scripts\backup-db.ps1
+```
+Creates a compressed, timestamped custom-format PostgreSQL dump file in `backups/`:
+`backups/abb_gate_verification_YYYYMMDD_HHMMSS.dump`
+
+### Automated Restore Script
+```powershell
+.\scripts\restore-db.ps1
+```
+Lists available backup dumps in `backups/`, prompts for confirmation, and restores the database using `pg_restore --clean`.
+
+### Manual Backup (via pg_dump)
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\pg_dump.exe" -U abb_app -h localhost -p 5432 -F c -b -v -f "backups/abb_backup.dump" abb_gate_verification
+```
+
+### Manual Restore (via pg_restore)
+```powershell
+& "C:\Program Files\PostgreSQL\18\bin\pg_restore.exe" -U postgres -h localhost -p 5432 -d abb_gate_verification -v --clean "backups/abb_backup.dump"
 ```
 
 ---
 
-## 📁 Project Structure
+## 8. Database Schema Overview
 
-```
-src/
-├── components/          # Shared UI components (ScannerStatus, etc.)
-├── components/ui/       # shadcn/ui primitives (Button, Input, etc.)
-├── integrations/
-│   └── supabase/        # Auto-generated Supabase client + TypeScript types
-├── lib/
-│   ├── auth-context.tsx # Auth state (isAdmin, user)
-│   ├── idcard.ts        # PDF generation for student ID cards and visitor passes
-│   ├── offline.ts       # IndexedDB cache for offline barcode scanning
-│   └── utils.ts         # Tailwind class helpers
-├── locales/
-│   ├── en.json          # English translations
-│   └── sw.json          # Swahili translations
-└── routes/
-    ├── index.tsx         # Login page
-    └── _authenticated/   # All protected pages (dashboard, verify, students…)
-```
+The database consists of 8 core business tables and 2 operational support tables:
+
+1. **`users`**: Administrative and security staff operator accounts with scrypt password hashes and role-based access.
+2. **`contractors`**: Registered third-party vendor and contractor companies operating inside Plant 3.
+3. **`persons`**: Authoritative directory of workers, interns, and visitors.
+4. **`id_cards`**: Physical credentials, barcodes, and QR codes linked to personnel.
+5. **`visits`**: Walk-in visitor passes and pre-approved appointments.
+6. **`gate_logs`**: Append-only event history of every entry/exit scan at Plant 3 gates.
+7. **`canteen_logs`**: Append-only records of meal entries, strictly enforcing 1 meal per person per day.
+8. **`audit_logs`**: Comprehensive administrative audit trail for security compliance.
+9. **`sessions`**: Server-side session tokens with cryptographically secure SHA-256 hashes.
+10. **`settings`**: Runtime operational parameters (e.g. anti-passback window, duplicate scan threshold).
 
 ---
 
-## 🔐 Environment Variables Reference
+## 9. Troubleshooting & FAQ
 
-| Variable                        | Required | Description                                               |
-| ------------------------------- | -------- | --------------------------------------------------------- |
-| `VITE_SUPABASE_URL`             | ✅       | Your Supabase project URL                                 |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | ✅       | Your Supabase anon/public key                             |
-| `VITE_SUPABASE_PROJECT_ID`      | ✅       | Your Supabase project ID (the part before `.supabase.co`) |
-| `SUPABASE_URL`                  | ✅       | Same as `VITE_SUPABASE_URL` (used by SSR)                 |
-| `SUPABASE_PUBLISHABLE_KEY`      | ✅       | Same as `VITE_SUPABASE_PUBLISHABLE_KEY` (used by SSR)     |
+### Issue: "connection to server at localhost:5432 failed"
+- Verify the PostgreSQL Windows service is running:
+  ```powershell
+  Get-Service -Name postgresql*
+  Start-Service postgresql-x64-18
+  ```
+- Test with `pg_isready`:
+  ```powershell
+  & "C:\Program Files\PostgreSQL\18\bin\pg_isready.exe" -h localhost -p 5432
+  ```
 
----
+### Issue: "fe_sendauth: no password supplied"
+- Verify the password in `backend/.env` under `DATABASE_URL`. Ensure special characters in passwords are URL-encoded if applicable.
 
-## 🌐 Language / i18n
-
-The app ships with full English and Swahili translations. Users switch language from the top-right language toggle (EN / SW) on the Gate Scan page.
-
-Translation files are in `src/locales/en.json` and `src/locales/sw.json`.
-
----
-
-## 🖨️ Hardware Scanner Support
-
-The Gate Scan page works with:
-
-- **USB barcode scanners** — plug in and select "Barcode Scanner" mode; the scanner acts as a keyboard
-- **Bluetooth barcode scanners** — pair to the device's OS first, then use the same mode
-- **Device camera** — select "Camera / QR Code" mode (requires HTTPS in production)
-- **Manual lookup** — type the student name or admission number
-
-Scanner detection (Web HID API) works in **Chrome and Edge** only. Firefox will still scan correctly but won't show the device name in the status panel.
+### Issue: "Port 4000 or 5173 is already in use"
+- Check which process is using the port:
+  ```powershell
+  Get-NetTCPConnection -LocalPort 4000
+  ```
 
 ---
 
-## 🤝 Contributing / Reporting Issues
+## 10. Handover Checklist & Verification
 
-Open an issue or pull request on GitHub. For schema changes, include the SQL migration in `supabase/migrations/`.
-
----
-
-## 📄 License
-
-Private — all rights reserved. Contact the project owner for usage permissions.
+- [x] Local PostgreSQL database configured (`abb_gate_verification`).
+- [x] Backend-only `DATABASE_URL` connection in `backend/.env`.
+- [x] No personal passwords or hardcoded secrets in source files.
+- [x] Zero external cloud dependencies (Supabase, Neon, personal cloud hosts removed).
+- [x] Repeatable Windows setup script provided (`scripts/setup-db.ps1`).
+- [x] Automated backup and disaster recovery scripts provided (`backup-db.ps1`, `restore-db.ps1`).
+- [x] Secure first-administrator creation via `npm run bootstrap-admin`.
+- [x] Append-only audit integrity for gate scans, canteen meals, and admin modifications.
+- [x] Fail-closed security architecture for all access verification requests.

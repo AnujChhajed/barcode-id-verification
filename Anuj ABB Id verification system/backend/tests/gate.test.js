@@ -28,9 +28,9 @@ let staffCookie;
 let sequence = 0;
 
 before(async () => {
-  context = createTestContext();
-  seedUser(context.db, ADMIN);
-  seedUser(context.db, STAFF);
+  context = await createTestContext();
+  await seedUser(context.db, ADMIN);
+  await seedUser(context.db, STAFF);
   server = await startServer(context.app);
   adminCookie = (await login(server.baseUrl, ADMIN.username, ADMIN.password)).cookie;
   staffCookie = (await login(server.baseUrl, STAFF.username, STAFF.password)).cookie;
@@ -38,7 +38,7 @@ before(async () => {
 
 after(async () => {
   if (server) await server.close();
-  context?.cleanup();
+  if (context) await context.cleanup();
 });
 
 const scan = (code, direction, cookie = staffCookie) =>
@@ -77,22 +77,36 @@ async function issueFor(fullName, { window = OPEN_WINDOW, kind = "id_card", pers
   return { person, credential: issued.json.credential };
 }
 
-function approvedCountFor(credentialId) {
-  return context.db
-    .prepare("SELECT COUNT(*) AS n FROM gate_events WHERE credential_id = ? AND result = 'approved'")
-    .get(credentialId).n;
+async function approvedCountFor(credentialId) {
+  const { rows } = await context.db.query(
+    "SELECT COUNT(*)::int AS n FROM gate_logs WHERE (card_id::text = $1 OR scanned_code = $1) AND result = 'approved'",
+    [credentialId],
+  );
+  return rows[0].n;
 }
 
-function eventRows(filters) {
+async function eventRows(filters) {
   const clauses = [];
   const params = [];
+  let idx = 1;
   for (const [column, value] of Object.entries(filters)) {
-    clauses.push(`${column} = ?`);
+    clauses.push(`gl.${column} = $${idx++}`);
     params.push(value);
   }
-  return context.db
-    .prepare(`SELECT * FROM gate_events WHERE ${clauses.join(" AND ")} ORDER BY created_at`)
-    .all(...params);
+  const { rows } = await context.db.query(
+    `SELECT gl.*, ic.card_number
+     FROM gate_logs gl
+     LEFT JOIN id_cards ic ON ic.id = gl.card_id
+     WHERE ${clauses.join(" AND ")}
+     ORDER BY gl.occurred_at`,
+    params,
+  );
+  return rows.map((r) => ({
+    ...r,
+    gate_id: r.gate_name,
+    credential_id: r.card_id ? (r.card_number || r.card_id) : null,
+    operator_user_id: r.operator_id,
+  }));
 }
 
 /** An ISO instant offset from now by `minutes` (negative = in the past). */
@@ -111,16 +125,19 @@ function assertIdentificationOnly(person) {
  * without breaking the rest of the request path. The real route, the real data
  * layer and the real database are all still exercised.
  */
-async function withFailingPrepare(match, run) {
-  const original = context.db.prepare;
-  context.db.prepare = function patched(sql, ...rest) {
-    if (String(sql).includes(match)) throw new Error("forced backend failure");
+async function withFailingQuery(match, run) {
+  const original = context.db.query;
+  context.db.query = function patched(sql, ...rest) {
+    const text = typeof sql === "string" ? sql : sql?.text || "";
+    if (text.includes(match)) {
+      return Promise.reject(new Error("forced backend failure"));
+    }
     return original.call(context.db, sql, ...rest);
   };
   try {
     return await run();
   } finally {
-    context.db.prepare = original;
+    context.db.query = original;
   }
 }
 
@@ -196,14 +213,17 @@ describe("gate — verdicts", () => {
     assert.equal(json.credential.status, "active");
     assertIdentificationOnly(json.person);
 
-    const rows = eventRows({ id: json.eventId });
+    const rows = await eventRows({ id: json.eventId });
     assert.equal(rows.length, 1);
     assert.equal(rows[0].result, "approved");
     assert.equal(rows[0].gate_id, GATE_ID);
     assert.equal(rows[0].direction, "entry");
     assert.equal(rows[0].credential_id, credential.id);
     assert.equal(rows[0].person_id, person.id);
-    assert.equal(rows[0].operator_user_id, context.db.prepare("SELECT id FROM users WHERE username = ?").get(STAFF.username).id);
+    assert.equal(
+      rows[0].operator_user_id,
+      (await context.db.query("SELECT id FROM users WHERE username = $1", [STAFF.username])).rows[0].id,
+    );
   });
 
   test("an unknown code is rejected and the scan is still recorded", async () => {
@@ -216,7 +236,7 @@ describe("gate — verdicts", () => {
     assert.equal(json.credential, null);
     assert.equal(json.recorded, true);
 
-    const rows = eventRows({ id: json.eventId });
+    const rows = await eventRows({ id: json.eventId });
     assert.equal(rows.length, 1);
     assert.equal(rows[0].result, "rejected");
     assert.equal(rows[0].reason_code, "not_found");
@@ -282,13 +302,24 @@ describe("gate — verdicts", () => {
     const { credential } = await issueFor("Corrupt Window Worker");
     // Simulates a record damaged by a bad migration or a manual edit: a value the
     // rule cannot read. It must fail closed.
-    context.db.prepare("UPDATE credentials SET valid_from = '' WHERE id = ?").run(credential.id);
-
-    const { res, json } = await scan(credential.id, "entry");
-    assert.equal(res.status, 200);
-    assert.equal(json.result, "unable_to_verify");
-    assert.equal(json.reasonCode, "indeterminate");
-    assert.equal(approvedCountFor(credential.id), 0);
+    const origQuery = context.db.query;
+    context.db.query = async function (sql, params) {
+      const res = await origQuery.call(context.db, sql, params);
+      const text = typeof sql === "string" ? sql : sql?.text || "";
+      if (text.includes("FROM id_cards") && res.rows?.length > 0 && (res.rows[0].id === credential.id || res.rows[0].card_number === credential.id)) {
+        return { ...res, rows: [{ ...res.rows[0], valid_from: "corrupt" }] };
+      }
+      return res;
+    };
+    try {
+      const { res, json } = await scan(credential.id, "entry");
+      assert.equal(res.status, 200);
+      assert.equal(json.result, "unable_to_verify");
+      assert.equal(json.reasonCode, "indeterminate");
+      assert.equal(await approvedCountFor(credential.id), 0);
+    } finally {
+      context.db.query = origQuery;
+    }
   });
 });
 
@@ -304,7 +335,7 @@ describe("gate — repeated and concurrent scans", () => {
     assert.equal(second.json.result, "approved");
     assert.equal(second.json.duplicate, true);
     assert.equal(second.json.eventId, first.json.eventId);
-    assert.equal(approvedCountFor(credential.id), 1);
+    assert.equal(await approvedCountFor(credential.id), 1);
   });
 
   test("the opposite direction is a separate event, not a duplicate", async () => {
@@ -314,7 +345,7 @@ describe("gate — repeated and concurrent scans", () => {
 
     assert.equal(exit.json.result, "approved");
     assert.equal(exit.json.duplicate, false);
-    assert.equal(approvedCountFor(credential.id), 2);
+    assert.equal(await approvedCountFor(credential.id), 2);
   });
 
   test("a burst of concurrent scans of the same credential writes exactly one event", async () => {
@@ -328,7 +359,7 @@ describe("gate — repeated and concurrent scans", () => {
       assert.equal(res.status, 200);
       assert.equal(json.result, "approved");
     }
-    assert.equal(approvedCountFor(credential.id), 1);
+    assert.equal(await approvedCountFor(credential.id), 1);
   });
 
   test("the duplicate window is honoured, not just the same second", async () => {
@@ -336,13 +367,13 @@ describe("gate — repeated and concurrent scans", () => {
     const { json } = await scan(credential.id, "entry");
 
     const now = new Date(json.occurredAt);
-    const inside = findRecentApprovedScan(context.db, {
+    const inside = await findRecentApprovedScan(context.db, {
       credentialId: credential.id,
       gateId: GATE_ID,
       direction: "entry",
       since: new Date(now.getTime() - 60_000).toISOString(),
     });
-    const outside = findRecentApprovedScan(context.db, {
+    const outside = await findRecentApprovedScan(context.db, {
       credentialId: credential.id,
       gateId: GATE_ID,
       direction: "entry",
@@ -350,7 +381,7 @@ describe("gate — repeated and concurrent scans", () => {
     });
 
     assert.ok(inside, "the scan should be found inside the window");
-    assert.equal(outside, undefined, "a scan older than the window must not count");
+    assert.equal(outside, null, "a scan older than the window must not count");
   });
 
   test("a rejected scan is never collapsed into an approval", async () => {
@@ -367,16 +398,16 @@ describe("gate — fail closed under backend failure", () => {
   test("a failed lookup returns UNABLE TO VERIFY and records the attempt", async () => {
     const { credential } = await issueFor("Lookup Failure Worker");
 
-    const { json } = await withFailingPrepare("FROM credentials WHERE id", () =>
+    const { json } = await withFailingQuery("FROM id_cards", () =>
       scan(credential.id, "entry"),
     );
 
     assert.equal(json.result, "unable_to_verify");
     assert.equal(json.reasonCode, "indeterminate");
     assert.equal(json.person, null);
-    assert.equal(approvedCountFor(credential.id), 0);
+    assert.equal(await approvedCountFor(credential.id), 0);
 
-    const rows = eventRows({ id: json.eventId });
+    const rows = await eventRows({ id: json.eventId });
     assert.equal(rows.length, 1);
     assert.equal(rows[0].result, "unable_to_verify");
   });
@@ -384,7 +415,7 @@ describe("gate — fail closed under backend failure", () => {
   test("an approval that cannot be written down is downgraded to UNABLE TO VERIFY", async () => {
     const { credential } = await issueFor("Write Failure Worker");
 
-    const { res, json } = await withFailingPrepare("INSERT INTO gate_events", () =>
+    const { res, json } = await withFailingQuery("INSERT INTO gate_logs", () =>
       scan(credential.id, "entry"),
     );
 
@@ -393,7 +424,7 @@ describe("gate — fail closed under backend failure", () => {
     assert.equal(json.reasonCode, "indeterminate");
     assert.equal(json.recorded, false);
     assert.equal(json.eventId, null);
-    assert.equal(approvedCountFor(credential.id), 0);
+    assert.equal(await approvedCountFor(credential.id), 0);
   });
 });
 
@@ -476,7 +507,7 @@ describe("gate — events and inside status", () => {
 
   test("an entry with no exit on the same day is flagged, not hidden", async () => {
     const { person, credential } = await issueFor("Missing Exit Worker");
-    insertGateEvent(context.db, {
+    await insertGateEvent(context.db, {
       credentialId: credential.id,
       personId: person.id,
       gateId: GATE_ID,
@@ -493,7 +524,7 @@ describe("gate — events and inside status", () => {
 
     assert.ok(row, "a never-closed entry must still be visible");
     assert.equal(row.missingExit, true);
-    assert.equal(row.since, "2020-01-02T03:00:00Z");
+    assert.ok(row.since.startsWith("2020-01-02T03:00:00"));
   });
 
   test("a rejected scan does not put anybody inside", async () => {

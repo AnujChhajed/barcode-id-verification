@@ -21,15 +21,15 @@ let adminCookie;
 let staffCookie;
 
 before(async () => {
-  context = createTestContext();
-  seedUser(context.db, ADMIN);
-  seedUser(context.db, STAFF);
+  context = await createTestContext();
+  await seedUser(context.db, ADMIN);
+  await seedUser(context.db, STAFF);
   server = await startServer(context.app);
 });
 
 after(async () => {
   if (server) await server.close();
-  context?.cleanup();
+  if (context) await context.cleanup();
 });
 
 describe("public surface", () => {
@@ -141,7 +141,10 @@ describe("role authorization — security staff must be denied administrator end
       staffCookie,
     );
     assert.equal(res.status, 403);
-    assert.equal(context.db.prepare("SELECT id FROM users WHERE username = ?").get("sneaky.admin"), undefined);
+    assert.equal(
+      (await context.db.query("SELECT id FROM users WHERE username = $1", ["sneaky.admin"])).rows[0],
+      undefined,
+    );
   });
 
   test("security staff CANNOT change settings", async () => {
@@ -150,9 +153,9 @@ describe("role authorization — security staff must be denied administrator end
       cookie: staffCookie,
     });
     assert.equal(res.status, 403);
-    const stored = context.db
-      .prepare("SELECT value FROM settings WHERE key = ?")
-      .get("session.timeout_minutes");
+    const stored = (
+      await context.db.query("SELECT value FROM settings WHERE key = $1", ["session.timeout_minutes"])
+    ).rows[0];
     assert.equal(stored.value, "30");
   });
 });
@@ -196,10 +199,11 @@ describe("administrator capabilities", () => {
     assert.equal(res.status, 200);
     assert.equal(json.setting.value, "45");
 
-    const audit = context.db
-      .prepare("SELECT action FROM audit_log WHERE entity_id = ? ORDER BY occurred_at DESC")
-      .get("session.timeout_minutes");
-    assert.equal(audit.action, "setting.update");
+    const { rows } = await context.db.query(
+      "SELECT action FROM audit_logs WHERE entity_id = $1 ORDER BY occurred_at DESC LIMIT 1",
+      ["session.timeout_minutes"],
+    );
+    assert.equal(rows[0]?.action, "setting.update");
   });
 });
 
@@ -218,5 +222,96 @@ describe("settings visibility", () => {
     const keys = json.settings.map((setting) => setting.key);
     assert.ok(keys.includes("expiry.reminder_days"));
     assert.ok(keys.includes("canteen.entries_per_person_day"));
+  });
+});
+
+describe("database least privilege enforcement (runtime abb_app role)", () => {
+  test("runtime role cannot CREATE tables in schema public", async () => {
+    await assert.rejects(
+      () => context.db.query("CREATE TABLE public.unauthorized_probe (id INT PRIMARY KEY);"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected SQLSTATE 42501 (insufficient_privilege)");
+        return true;
+      },
+    );
+  });
+
+  test("runtime role cannot TRUNCATE application tables", async () => {
+    const targets = ["gate_logs", "canteen_logs", "audit_logs", "persons", "users", "sessions"];
+    for (const table of targets) {
+      await assert.rejects(
+        () => context.db.query(`TRUNCATE TABLE ${table} CASCADE;`),
+        (err) => {
+          assert.equal(err.code, "42501", `Expected 42501 on TRUNCATE ${table}`);
+          return true;
+        },
+      );
+    }
+  });
+
+  test("runtime role cannot UPDATE or DELETE append-only gate_logs", async () => {
+    await assert.rejects(
+      () => context.db.query("UPDATE gate_logs SET result = 'approved' WHERE id = '00000000-0000-0000-0000-000000000000';"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected 42501 on UPDATE gate_logs");
+        return true;
+      },
+    );
+    await assert.rejects(
+      () => context.db.query("DELETE FROM gate_logs WHERE id = '00000000-0000-0000-0000-000000000000';"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected 42501 on DELETE gate_logs");
+        return true;
+      },
+    );
+  });
+
+  test("runtime role cannot UPDATE or DELETE append-only audit_logs", async () => {
+    await assert.rejects(
+      () => context.db.query("UPDATE audit_logs SET action = 'tampered' WHERE id = '00000000-0000-0000-0000-000000000000';"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected 42501 on UPDATE audit_logs");
+        return true;
+      },
+    );
+    await assert.rejects(
+      () => context.db.query("DELETE FROM audit_logs WHERE id = '00000000-0000-0000-0000-000000000000';"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected 42501 on DELETE audit_logs");
+        return true;
+      },
+    );
+  });
+
+  test("runtime role cannot UPDATE or DELETE append-only canteen_logs", async () => {
+    await assert.rejects(
+      () => context.db.query("UPDATE canteen_logs SET result = 'approved' WHERE id = '00000000-0000-0000-0000-000000000000';"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected 42501 on UPDATE canteen_logs");
+        return true;
+      },
+    );
+    await assert.rejects(
+      () => context.db.query("DELETE FROM canteen_logs WHERE id = '00000000-0000-0000-0000-000000000000';"),
+      (err) => {
+        assert.equal(err.code, "42501", "Expected 42501 on DELETE canteen_logs");
+        return true;
+      },
+    );
+  });
+
+  test("runtime role CAN insert into audit_logs and gate_logs", async () => {
+    const auditRes = await context.db.query(
+      "INSERT INTO audit_logs (action, entity_type, reason) VALUES ($1, $2, $3) RETURNING id;",
+      ["security_test.probe", "probe", "least_privilege_validation"],
+    );
+    assert.ok(auditRes.rows[0]?.id);
+  });
+
+  test("runtime role CAN delete from sessions for lifecycle housekeeping", async () => {
+    const res = await context.db.query(
+      "DELETE FROM sessions WHERE expires_at < NOW();",
+    );
+    assert.equal(typeof res.rowCount, "number");
   });
 });

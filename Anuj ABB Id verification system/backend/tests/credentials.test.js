@@ -28,9 +28,9 @@ let staffCookie;
 let workerSequence = 0;
 
 before(async () => {
-  context = createTestContext();
-  seedUser(context.db, ADMIN);
-  seedUser(context.db, STAFF);
+  context = await createTestContext();
+  await seedUser(context.db, ADMIN);
+  await seedUser(context.db, STAFF);
   server = await startServer(context.app);
   adminCookie = (await login(server.baseUrl, ADMIN.username, ADMIN.password)).cookie;
   staffCookie = (await login(server.baseUrl, STAFF.username, STAFF.password)).cookie;
@@ -38,7 +38,7 @@ before(async () => {
 
 after(async () => {
   if (server) await server.close();
-  context?.cleanup();
+  if (context) await context.cleanup();
 });
 
 async function addWorker(fullName) {
@@ -94,9 +94,9 @@ describe("credentials — access control", () => {
     );
     assert.equal(suspended.res.status, 403);
 
-    const stored = context.db
-      .prepare("SELECT COUNT(*) AS total FROM credentials WHERE person_id = ?")
-      .get(person.id);
+    const stored = (
+      await context.db.query("SELECT COUNT(*)::int AS total FROM id_cards WHERE person_id = $1", [person.id])
+    ).rows[0];
     assert.equal(stored.total, 0);
   });
 });
@@ -205,11 +205,11 @@ describe("credentials — lifecycle", () => {
     const issued = await issue({ personId: person.id, kind: "id_card", ...OPEN_WINDOW });
     assert.equal(issued.res.status, 201);
 
-    const audit = context.db
-      .prepare("SELECT action, actor_user_id FROM audit_log WHERE entity_id = ?")
-      .get(issued.json.credential.id);
+    const audit = (
+      await context.db.query("SELECT action, actor_id FROM audit_logs WHERE entity_id = $1", [issued.json.credential.id])
+    ).rows[0];
     assert.equal(audit.action, "credential.issue");
-    assert.ok(audit.actor_user_id);
+    assert.ok(audit.actor_id);
   });
 
   test("validity can be extended and the change is audited", async () => {
@@ -228,18 +228,19 @@ describe("credentials — lifecycle", () => {
     assert.equal(res.status, 200);
     assert.equal(json.credential.validTo, "2098-12-31");
 
-    const audit = context.db
-      .prepare(
-        "SELECT action, reason FROM audit_log WHERE entity_id = ? AND action = 'credential.validity_change'",
+    const audit = (
+      await context.db.query(
+        "SELECT action, reason FROM audit_logs WHERE entity_id = $1 AND action = 'credential.validity_change'",
+        [credential.id],
       )
-      .get(credential.id);
+    ).rows[0];
     assert.equal(audit.reason, "Contract extended by six months");
   });
 
   test("a validity change without a reason is rejected", async () => {
-    const credential = context.db
-      .prepare("SELECT id FROM credentials WHERE person_id = ?")
-      .get(person.id);
+    const credential = (
+      await context.db.query("SELECT id FROM id_cards WHERE person_id = $1", [person.id])
+    ).rows[0];
     const { res } = await postJson(
       server.baseUrl,
       `/api/credentials/${credential.id}/validity`,
@@ -260,9 +261,9 @@ describe("credentials — lifecycle", () => {
   });
 
   test("suspending a credential makes it invalid immediately", async () => {
-    const credential = context.db
-      .prepare("SELECT id FROM credentials WHERE person_id = ?")
-      .get(person.id);
+    const credential = (
+      await context.db.query("SELECT id FROM id_cards WHERE person_id = $1", [person.id])
+    ).rows[0];
 
     const { res, json } = await postJson(
       server.baseUrl,
@@ -277,9 +278,9 @@ describe("credentials — lifecycle", () => {
   });
 
   test("a suspended credential can be reactivated", async () => {
-    const credential = context.db
-      .prepare("SELECT id FROM credentials WHERE person_id = ?")
-      .get(person.id);
+    const credential = (
+      await context.db.query("SELECT id FROM id_cards WHERE person_id = $1", [person.id])
+    ).rows[0];
 
     const { res, json } = await postJson(
       server.baseUrl,
@@ -292,9 +293,9 @@ describe("credentials — lifecycle", () => {
   });
 
   test("a terminated credential cannot be renewed", async () => {
-    const credential = context.db
-      .prepare("SELECT id FROM credentials WHERE person_id = ?")
-      .get(person.id);
+    const credential = (
+      await context.db.query("SELECT id FROM id_cards WHERE person_id = $1", [person.id])
+    ).rows[0];
 
     const terminated = await postJson(
       server.baseUrl,

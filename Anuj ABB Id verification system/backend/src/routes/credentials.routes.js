@@ -5,8 +5,8 @@ import {
   setCredentialStatus,
   toCredentialView,
   updateCredentialValidity,
-} from "../data/credentials.js";
-import { findPersonById } from "../data/people.js";
+} from "../data/id-cards.js";
+import { findPersonById } from "../data/persons.js";
 import { siteToday } from "../data/settings.js";
 import { writeAudit } from "../lib/audit.js";
 import { conflict, notFound } from "../lib/errors.js";
@@ -17,13 +17,6 @@ import {
   idParamSchema,
 } from "../validation/schemas.js";
 
-/**
- * Credential lifecycle is administrator-only. Issuing, extending, suspending and
- * terminating all write to `audit_log` with the actor, the before/after values
- * and the stated reason, so "who changed whose pass, and why" is always
- * answerable. Credentials are never deleted: an expired or terminated pass stays
- * on record as evidence.
- */
 const ADMINISTRATOR_ONLY = ["administrator"];
 
 function currentView(credential, personStatus, today) {
@@ -36,34 +29,41 @@ export function registerCredentialRoutes({ registrar, db }) {
     path: "/api/credentials",
     access: ADMINISTRATOR_ONLY,
     body: createCredentialSchema,
-    handler: (req, res, next) => {
+    handler: async (req, res, next) => {
       const { personId, kind, validFrom, validTo } = req.body;
 
-      const person = findPersonById(db, personId);
+      const person = await findPersonById(db, personId);
       if (!person) return next(notFound("No such person."));
       if (person.status !== "active") {
         return next(conflict("A credential cannot be issued to a suspended or terminated person."));
       }
 
-      // One live credential of each kind per person; use the status endpoint to
-      // suspend the old one first if it is being replaced.
-      if (findActiveCredentialOfKind(db, personId, kind)) {
-        return next(conflict(`This person already holds an active ${kind === "id_card" ? "ID card" : "gate pass"}.`));
+      const activeExisting = await findActiveCredentialOfKind(db, personId, kind);
+      if (activeExisting) {
+        return next(
+          conflict(`This person already holds an active ${kind === "id_card" ? "ID card" : "gate pass"}.`),
+        );
       }
 
-      const id = insertCredential(db, { personId, kind, validFrom, validTo }, req.user.id);
+      const inserted = await insertCredential(
+        db,
+        { personId, kind, validFrom, validTo },
+        req.user.id,
+      );
 
-      writeAudit(db, {
+      await writeAudit(db, {
         actorUserId: req.user.id,
         action: "credential.issue",
         entityType: "credential",
-        entityId: id,
+        entityId: inserted.card_number || inserted.id,
         newValue: { personId, kind, validFrom, validTo },
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
       });
 
-      const today = siteToday(db);
+      const today = await siteToday(db);
       res.status(201).json({
-        credential: currentView(findCredentialById(db, id), person.status, today),
+        credential: currentView(inserted, person.status, today),
       });
     },
   });
@@ -74,29 +74,37 @@ export function registerCredentialRoutes({ registrar, db }) {
     access: ADMINISTRATOR_ONLY,
     params: idParamSchema,
     body: credentialValiditySchema,
-    handler: (req, res, next) => {
-      const credential = findCredentialById(db, req.params.id);
+    handler: async (req, res, next) => {
+      const credential = await findCredentialById(db, req.params.id);
       if (!credential) return next(notFound("No such credential."));
       if (credential.status === "terminated") {
         return next(conflict("A terminated credential cannot be renewed."));
       }
 
       const { validFrom, validTo, reason } = req.body;
-      updateCredentialValidity(db, credential.id, { validFrom, validTo });
+      const updated = await updateCredentialValidity(
+        db,
+        credential.card_number || credential.id,
+        { validFrom, validTo },
+        req.user.id,
+      );
 
-      writeAudit(db, {
+      await writeAudit(db, {
         actorUserId: req.user.id,
         action: "credential.validity_change",
         entityType: "credential",
-        entityId: credential.id,
+        entityId: credential.card_number || credential.id,
         oldValue: { validFrom: credential.valid_from, validTo: credential.valid_to },
         newValue: { validFrom, validTo },
         reason,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
       });
 
-      const person = findPersonById(db, credential.person_id);
+      const person = await findPersonById(db, credential.person_id);
+      const today = await siteToday(db);
       res.json({
-        credential: currentView(findCredentialById(db, credential.id), person?.status, siteToday(db)),
+        credential: currentView(updated, person?.status, today),
       });
     },
   });
@@ -107,27 +115,37 @@ export function registerCredentialRoutes({ registrar, db }) {
     access: ADMINISTRATOR_ONLY,
     params: idParamSchema,
     body: credentialStatusSchema,
-    handler: (req, res, next) => {
-      const credential = findCredentialById(db, req.params.id);
+    handler: async (req, res, next) => {
+      const credential = await findCredentialById(db, req.params.id);
       if (!credential) return next(notFound("No such credential."));
 
       const { status, reason } = req.body;
+      let updated = credential;
+
       if (credential.status !== status) {
-        setCredentialStatus(db, credential.id, status);
-        writeAudit(db, {
+        updated = await setCredentialStatus(
+          db,
+          credential.card_number || credential.id,
+          status,
+          req.user.id,
+        );
+        await writeAudit(db, {
           actorUserId: req.user.id,
           action: "credential.status_change",
           entityType: "credential",
-          entityId: credential.id,
+          entityId: credential.card_number || credential.id,
           oldValue: { status: credential.status },
           newValue: { status },
           reason,
+          ipAddress: req.ip,
+          userAgent: req.headers["user-agent"],
         });
       }
 
-      const person = findPersonById(db, credential.person_id);
+      const person = await findPersonById(db, credential.person_id);
+      const today = await siteToday(db);
       res.json({
-        credential: currentView(findCredentialById(db, credential.id), person?.status, siteToday(db)),
+        credential: currentView(updated, person?.status, today),
       });
     },
   });

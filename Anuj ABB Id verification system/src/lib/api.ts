@@ -360,6 +360,62 @@ export const gateApi = {
   inside() {
     return apiFetch<{ asOf: string; today: string; inside: InsideEntry[] }>("/api/inside");
   },
+  syncQueue(items: unknown[]) {
+    return apiFetch<{ synced: number; items: unknown[] }>("/api/gate/sync", {
+      method: "POST",
+      body: { items },
+    });
+  },
+  override(input: { code: string; personId?: string; reason: string; direction?: string; gateId?: string }) {
+    return apiFetch<{ success: true; eventId: string }>("/api/gate/override", {
+      method: "POST",
+      body: input,
+    });
+  },
+  incident(input: { note: string; gateId?: string; direction?: string }) {
+    return apiFetch<{ success: true; eventId: string }>("/api/gate/incident", {
+      method: "POST",
+      body: input,
+    });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Visits
+// ---------------------------------------------------------------------------
+
+export interface WalkInVisitorInput {
+  fullName: string;
+  phone?: string;
+  purposeOfVisit: string;
+  personToMeet: string;
+  validUntil?: string;
+  validTime?: string;
+}
+
+export const visitsApi = {
+  walkIn(input: WalkInVisitorInput) {
+    return apiFetch<{ success: true; code: string; personId: string; visitId: string; logId: string }>(
+      "/api/visits/walk-in",
+      {
+        method: "POST",
+        body: input,
+      },
+    );
+  },
+  list(params?: { status?: string; limit?: number; offset?: number }) {
+    return apiFetch<{ visits: unknown[]; total: number }>("/api/visits", { query: params });
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Photos
+// ---------------------------------------------------------------------------
+
+export const photosApi = {
+  urlFor(personId: string) {
+    return `${API_BASE_URL}/api/photos/${encodeURIComponent(personId)}`;
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -409,3 +465,4 @@ export const settingsApi = {
     return setting;
   },
 };
+

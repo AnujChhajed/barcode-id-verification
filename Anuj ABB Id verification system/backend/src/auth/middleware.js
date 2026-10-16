@@ -28,52 +28,52 @@ export function isValidAccessDeclaration(access) {
 }
 
 export function createAuthorize({ db }) {
-  const selectUser = db.prepare(
-    "SELECT id, username, full_name, role, is_active FROM users WHERE id = ?",
-  );
-
   return function authorize(access) {
-    return function authorizeMiddleware(req, res, next) {
+    return async function authorizeMiddleware(req, res, next) {
       if (access === PUBLIC) return next();
 
-      const token = req.cookies?.[config.sessionCookieName];
-      const session = findActiveSession(db, token);
-      if (!session) return next(unauthorized());
+      try {
+        const token = req.cookies?.[config.sessionCookieName];
+        const session = await findActiveSession(db, token);
+        if (!session) return next(unauthorized());
 
-      const user = selectUser.get(session.user_id);
-      if (!user || !user.is_active) return next(unauthorized("This account is not active."));
+        const { rows } = await db.query(
+          "SELECT id, username, full_name, role, is_active FROM users WHERE id = $1;",
+          [session.user_id],
+        );
+        const user = rows[0];
+        if (!user || !user.is_active) return next(unauthorized("This account is not active."));
 
-      const lastSeen = Date.parse(session.last_seen_at ?? "");
-      if (Number.isNaN(lastSeen) || Date.now() - lastSeen > TOUCH_INTERVAL_MS) {
-        try {
-          touchSession(db, session.id);
-        } catch {
-          // Session liveness is best-effort; never fail a request over it.
+        const lastSeen = Date.parse(session.last_seen_at ?? "");
+        if (Number.isNaN(lastSeen) || Date.now() - lastSeen > TOUCH_INTERVAL_MS) {
+          touchSession(db, session.id).catch(() => {});
         }
-      }
 
-      req.user = {
-        id: user.id,
-        username: user.username,
-        fullName: user.full_name,
-        role: user.role,
-      };
-      req.sessionId = session.id;
-
-      if (access === AUTHENTICATED) return next();
-
-      const allowedRoles = Array.isArray(access) ? access : [];
-      if (!allowedRoles.includes(user.role)) {
-        logger.warn("authorization denied", {
-          userId: user.id,
+        req.user = {
+          id: user.id,
+          username: user.username,
+          fullName: user.full_name,
           role: user.role,
-          method: req.method,
-          path: req.originalUrl,
-        });
-        return next(forbidden());
-      }
+        };
+        req.sessionId = session.id;
 
-      return next();
+        if (access === AUTHENTICATED) return next();
+
+        const allowedRoles = Array.isArray(access) ? access : [];
+        if (!allowedRoles.includes(user.role)) {
+          logger.warn("authorization denied", {
+            userId: user.id,
+            role: user.role,
+            method: req.method,
+            path: req.originalUrl,
+          });
+          return next(forbidden());
+        }
+
+        return next();
+      } catch (err) {
+        return next(err);
+      }
     };
   };
 }

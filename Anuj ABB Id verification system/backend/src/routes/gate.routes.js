@@ -5,96 +5,60 @@ import {
   evaluateCredential,
   gateResultFor,
 } from "../domain/credential-validity.js";
-import { findCredentialById, toCredentialView } from "../data/credentials.js";
+import { findCredentialById, toCredentialView } from "../data/id-cards.js";
 import {
-  countGateEvents,
   findRecentApprovedScan,
   insertGateEvent,
   listGateEvents,
   listInsidePeople,
-  toGateEventView,
-} from "../data/gate-events.js";
-import { findPersonById, toVerificationView } from "../data/people.js";
+} from "../data/gate-logs.js";
+import { findPersonById, toVerificationView } from "../data/persons.js";
 import {
-  mainGateId,
   readIntegerSetting,
-  siteTimezone,
   siteToday,
 } from "../data/settings.js";
 import { logger } from "../lib/logger.js";
-import { addSeconds, dateKeyInZone, nowIso } from "../lib/time.js";
+import { addSeconds, nowIso } from "../lib/time.js";
 import { listGateEventsQuerySchema, verifyGateSchema } from "../validation/schemas.js";
 
-/**
- * Gate verification and event tracking.
- *
- * Every scan runs the same authoritative check (`evaluateCredential`) against
- * the stored credential and the holder's current status, and every scan writes
- * a row to the append-only `gate_events` table — including the ones that are
- * rejected. Nothing here trusts the client: the gate, the timestamp and the
- * verdict are all decided by the server.
- *
- * FAIL CLOSED: a verdict can only be APPROVED after a successful check AND a
- * successful write. If either is in doubt the answer is UNABLE TO VERIFY, which
- * is a refusal, not a pass.
- */
 const GATE_ROLES = ["administrator", "security_staff"];
-
-/** Provisional window; the agreed value is still an open question (see tasks.md). */
 const DEFAULT_DUPLICATE_WINDOW_SECONDS = 5;
 
 function isUniqueViolation(error) {
-  return String(error?.code ?? "").startsWith("SQLITE_CONSTRAINT");
+  return error?.code === "23505" || String(error?.code ?? "").startsWith("SQLITE_CONSTRAINT");
 }
 
-/**
- * Records one scan, collapsing a repeated scan of the same credential, in the
- * same direction, at the same gate inside the window into the existing row.
- *
- * The check and the insert run inside a single transaction so two concurrent
- * requests cannot both decide they are the first; `ux_gate_events_dedup` is the
- * database-level backstop if they somehow do.
- *
- * @returns {{eventId: string|null, duplicate: boolean, recorded: boolean}}
- */
-function createScanRecorder(db) {
-  return db.transaction((scan) => {
-    if (scan.result === APPROVED && scan.credentialId) {
-      const windowSeconds = readIntegerSetting(
-        db,
-        "scan.duplicate_window_seconds",
-        DEFAULT_DUPLICATE_WINDOW_SECONDS,
-        { min: 0, max: 300 },
-      );
-      const previous = findRecentApprovedScan(db, {
-        credentialId: scan.credentialId,
-        gateId: scan.gateId,
-        direction: scan.direction,
-        since: addSeconds(new Date(scan.occurredAt), -windowSeconds),
-      });
-      if (previous) return { eventId: previous.id, duplicate: true, recorded: true };
+async function recordScan(db, scan) {
+  if (scan.result === APPROVED && scan.credentialId) {
+    const windowSeconds = await readIntegerSetting(
+      db,
+      "scan.duplicate_window_seconds",
+      DEFAULT_DUPLICATE_WINDOW_SECONDS,
+      { min: 0, max: 300 },
+    );
+    const previous = await findRecentApprovedScan(db, {
+      credentialId: scan.credentialId,
+      gateId: scan.gateId,
+      direction: scan.direction,
+      since: addSeconds(new Date(scan.occurredAt), -windowSeconds),
+    });
+    if (previous) {
+      return { eventId: previous.id, duplicate: true, recorded: true };
     }
+  }
 
-    try {
-      return { eventId: insertGateEvent(db, scan), duplicate: false, recorded: true };
-    } catch (error) {
-      // Two requests landed on the same instant and the unique index kept one.
-      if (isUniqueViolation(error)) return { eventId: null, duplicate: true, recorded: true };
-      throw error;
+  try {
+    const eventId = await insertGateEvent(db, scan);
+    return { eventId, duplicate: false, recorded: true };
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return { eventId: null, duplicate: true, recorded: true };
     }
-  });
-}
-
-/** An entry we cannot date is treated as unclosed rather than quietly ignored. */
-function entryIsUnclosed(occurredAt, timezone, today) {
-  const parsed = new Date(occurredAt);
-  if (Number.isNaN(parsed.getTime())) return true;
-  return dateKeyInZone(parsed, timezone) !== today;
+    throw error;
+  }
 }
 
 export function registerGateRoutes({ registrar, db }) {
-  const recordScan = createScanRecorder(db);
-
   // -------------------------------------------------------------------------
   // The scan. Returns a verdict and records it.
   // -------------------------------------------------------------------------
@@ -103,12 +67,12 @@ export function registerGateRoutes({ registrar, db }) {
     path: "/api/gate/verify",
     access: GATE_ROLES,
     body: verifyGateSchema,
-    handler: (req, res) => {
+    handler: async (req, res) => {
       const { code, direction } = req.body;
       const now = new Date();
       const occurredAt = nowIso(now);
+      const gateId = "gate-p3-main";
 
-      let gateId = null;
       let credential = null;
       let person = null;
       let today = null;
@@ -116,11 +80,9 @@ export function registerGateRoutes({ registrar, db }) {
       let outcome;
 
       try {
-        gateId = mainGateId(db);
-        credential = findCredentialById(db, code) ?? null;
-        // A credential whose holder record cannot be read is never an approval.
-        person = credential ? (findPersonById(db, credential.person_id) ?? null) : null;
-        today = siteToday(db, now);
+        credential = await findCredentialById(db, code);
+        person = credential ? await findPersonById(db, credential.person_id) : null;
+        today = await siteToday(db);
         reason = evaluateCredential(credential, person?.status, today);
         outcome = gateResultFor(reason);
       } catch (error) {
@@ -132,27 +94,23 @@ export function registerGateRoutes({ registrar, db }) {
       }
 
       let scan = { eventId: null, duplicate: false, recorded: false };
-      if (gateId) {
-        try {
-          scan = recordScan({
-            credentialId: credential?.id ?? null,
-            personId: person?.id ?? null,
-            gateId,
-            direction,
-            result: outcome,
-            reasonCode: reason.code,
-            reasonText: reason.text,
-            occurredAt,
-            operatorUserId: req.user.id,
-          });
-        } catch (error) {
-          logger.error("gate event could not be recorded", { error: error?.message });
-        }
+      try {
+        scan = await recordScan(db, {
+          credentialId: credential ? (credential.card_number || credential.id) : null,
+          personId: person?.id ?? null,
+          gateId,
+          direction,
+          result: outcome,
+          reasonCode: reason.code,
+          reasonText: reason.text,
+          scannedCode: code,
+          occurredAt,
+          operatorUserId: req.user.id,
+        });
+      } catch (error) {
+        logger.error("gate event could not be recorded", { error: error?.message });
       }
 
-      // An approval that was not written down must not be shown as an approval:
-      // the guard would wave someone in on the strength of an entry that does
-      // not exist. The scan is downgraded instead.
       if (outcome === APPROVED && !scan.recorded) {
         reason = { valid: false, code: "indeterminate", text: REASON_TEXT.indeterminate };
         outcome = UNABLE_TO_VERIFY;
@@ -174,47 +132,128 @@ export function registerGateRoutes({ registrar, db }) {
   });
 
   // -------------------------------------------------------------------------
-  // The scan history. Read-only; gate_events is append-only.
+  // The scan history. Read-only; gate_logs is append-only.
   // -------------------------------------------------------------------------
   registrar.defineRoute({
     method: "GET",
     path: "/api/gate/events",
     access: GATE_ROLES,
     query: listGateEventsQuerySchema,
-    handler: (req, res) => {
+    handler: async (req, res) => {
       const filters = req.validatedQuery;
-      res.json({
-        events: listGateEvents(db, filters).map(toGateEventView),
-        total: countGateEvents(db, filters),
-        limit: filters.limit,
-        offset: filters.offset,
-      });
+      const result = await listGateEvents(db, filters);
+      res.json(result);
     },
   });
 
   // -------------------------------------------------------------------------
-  // Who is currently on site: the latest approved event of each person.
+  // Who is currently on site: derived from latest gate scans.
   // -------------------------------------------------------------------------
   registrar.defineRoute({
     method: "GET",
     path: "/api/inside",
     access: GATE_ROLES,
-    handler: (req, res) => {
-      const timezone = siteTimezone(db);
-      const today = siteToday(db);
+    handler: async (req, res) => {
+      const today = await siteToday(db);
+      const inside = await listInsidePeople(db);
       res.json({
         asOf: nowIso(),
         today,
-        inside: listInsidePeople(db).map((row) => ({
-          person: toVerificationView(row),
-          credentialId: row.credential_id,
-          gateId: row.gate_id,
-          since: row.occurred_at,
-          // An entry with no matching exit on the same plant day is flagged, not
-          // assumed absent — the exit may simply not have been scanned yet.
-          missingExit: entryIsUnclosed(row.occurred_at, timezone, today),
-        })),
+        inside,
       });
     },
   });
+
+  // -------------------------------------------------------------------------
+  // Offline scan queue synchronization endpoint
+  // -------------------------------------------------------------------------
+  registrar.defineRoute({
+    method: "POST",
+    path: "/api/gate/sync",
+    access: GATE_ROLES,
+    handler: async (req, res) => {
+      const { items } = req.body || {};
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.json({ synced: 0, items: [] });
+      }
+
+      const synced = [];
+      for (const item of items) {
+        try {
+          const eventId = await insertGateEvent(db, {
+            credentialId: item.scanned_code || item.scannedCode,
+            personId: item.student_id || item.personId || null,
+            gateId: item.gate_id || "Plant 3 - Main Gate",
+            direction: item.direction || "entry",
+            result: item.decision === "allowed" ? "approved" : "rejected",
+            reasonCode: item.reason || null,
+            reasonText: item.reason || null,
+            scannedCode: item.scanned_code || item.scannedCode,
+            occurredAt: item.scanned_at || nowIso(),
+            operatorUserId: req.user.id,
+            recordedOffline: true,
+            syncedAt: nowIso(),
+          });
+          synced.push({ clientQueueId: item.id, serverEventId: eventId, success: true });
+        } catch (err) {
+          synced.push({ clientQueueId: item.id, success: false, error: err.message });
+        }
+      }
+
+      res.json({ synced: synced.filter((s) => s.success).length, items: synced });
+    },
+  });
+
+  // -------------------------------------------------------------------------
+  // Operator override endpoint
+  // -------------------------------------------------------------------------
+  registrar.defineRoute({
+    method: "POST",
+    path: "/api/gate/override",
+    access: GATE_ROLES,
+    handler: async (req, res) => {
+      const { code, personId, reason, direction, gateId } = req.body || {};
+      const eventId = await insertGateEvent(db, {
+        credentialId: code || "OVERRIDE",
+        personId: personId || null,
+        gateId: gateId || "Plant 3 - Main Gate",
+        direction: direction || "entry",
+        result: "approved",
+        reasonCode: "operator_override",
+        reasonText: reason || "Operator manual override",
+        scannedCode: code || "OVERRIDE",
+        occurredAt: nowIso(),
+        operatorUserId: req.user.id,
+        isOverride: true,
+        overrideReason: reason,
+      });
+      res.json({ success: true, eventId });
+    },
+  });
+
+  // -------------------------------------------------------------------------
+  // Gate incident / panic alert endpoint
+  // -------------------------------------------------------------------------
+  registrar.defineRoute({
+    method: "POST",
+    path: "/api/gate/incident",
+    access: GATE_ROLES,
+    handler: async (req, res) => {
+      const { note, gateId, direction } = req.body || {};
+      const eventId = await insertGateEvent(db, {
+        credentialId: "INCIDENT",
+        personId: null,
+        gateId: gateId || "Plant 3 - Main Gate",
+        direction: direction || "entry",
+        result: "rejected",
+        reasonCode: "incident_alert",
+        reasonText: note || "Security incident at gate",
+        scannedCode: "INCIDENT",
+        occurredAt: nowIso(),
+        operatorUserId: req.user.id,
+      });
+      res.json({ success: true, eventId });
+    },
+  });
 }
+

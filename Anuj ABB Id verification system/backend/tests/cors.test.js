@@ -9,13 +9,13 @@ let context;
 let server;
 
 before(async () => {
-  context = createTestContext({ corsOrigins: [ALLOWED] });
+  context = await createTestContext({ corsOrigins: [ALLOWED] });
   server = await startServer(context.app);
 });
 
 after(async () => {
   await server.close();
-  context.cleanup();
+  await context.cleanup();
 });
 
 describe("cors — allowed origin", () => {
@@ -70,7 +70,7 @@ describe("cors — it is not an authorization control", () => {
   });
 
   test("a logged-in cross-origin caller is authorized normally", async () => {
-    seedUser(context.db, {
+    await seedUser(context.db, {
       username: "cors.staff",
       password: "correct-horse-battery",
       role: "security_staff",

@@ -50,7 +50,8 @@
     "active_workers": "Wafanyakazi hai",
     "active_interns": "Wanafunzi wa mafunzo hai",
     "status": "Hali",
-    "name": "Jina"
+    "name": "Jina",
+    "active_people": "Wafanyakazi Walio Kazini"
   },
   "person": {
     "cat_worker": "Mfanyakazi",
@@ -404,7 +405,19 @@
     "on_site": "Yupo kazini kwa {{duration}}",
     "missing_exit": "Hakuna skana ya kutoka",
     "missing_exit_banner": "Kuingia {{count}} kwa siku ya awali hakuna skana ya kutoka iliyorekodiwa — fuatilia langoni.",
-    "footer": "Inasasishwa kila sekunde 30 · Idadi inatoka rejista ya lango kuu"
+    "footer": "Inasasishwa kila sekunde 30 · Idadi inatoka rejista ya lango kuu",
+    "sort_since_new": "Kuingia (kipya zaidi)",
+    "sort_since_old": "Kuingia (cha zamani zaidi)",
+    "sort_duration": "Muda mrefu zaidi ndani",
+    "missing_exit_hint": "Kuingia kwa siku ya awali bila skana ya kutoka iliyorekodiwa",
+    "missing_exit_count": "Skana {{count}} ya kutoka haipo",
+    "since_at": "Tangu {{time}}",
+    "cat_worker": "Mfanyakazi",
+    "cat_intern": "Mwanafunzi wa mafunzo",
+    "cat_visitor": "Mgeni",
+    "just_now": "sasa hivi",
+    "minutes_ago": "dakika {{count}} zilizopita",
+    "hours_ago": "saa {{count}} zilizopita"
   },
   "vis": {
     "title": "Kibali cha Mgeni",
@@ -615,9 +628,9 @@
     "tab_logs": "Kumbukumbu zote",
     "tab_attend": "Mahudhurio ya leo",
     "tab_denied": "Mara za kukataliwa",
-    "search_ph": "Tafuta kwa msimbo ulioskanishwa…",
+    "search_ph": "Tafuta kwa msimbo au jina…",
     "all_results": "Matokeo yote",
-    "dir_all": "Kuingia + Kutoka",
+    "dir_all": "Mielekeo yote",
     "no_match": "Hakuna kumbukumbu zinazolingana na vichujio vyako.",
     "clear": "Futa",
     "col_when": "Wakati",
@@ -639,13 +652,19 @@
     "col_last_exit": "Kutoka mwisho",
     "attend_campus": "Yupo kazini",
     "attend_left": "Ameondoka kazini",
-    "denied_desc": "Misimbo ya baa yenye kukataliwa nyingi zaidi katika kipindi kilichochaguliwa — husaidia kutambua kadi zilizopotea au matatizo yanayoendelea.",
+    "denied_desc": "Misimbo na washikaji wenye kukataliwa mara nyingi zaidi katika kipindi kilichochaguliwa.",
     "no_denied": "Hakuna skana zilizokataliwa katika kipindi hiki.",
     "col_denials": "Kukataliwa",
     "col_last_seen": "Ilionekana mwisho",
     "pdf_logs_title": "Kumbukumbu ya ufikiaji",
     "pdf_denied_title": "Skana zilizokataliwa",
-    "pdf_shown": "zimeonyeshwa"
+    "pdf_shown": "zimeonyeshwa",
+    "result_all": "Matokeo yote",
+    "result_approved": "Imeidhinishwa",
+    "result_rejected": "Imekataliwa",
+    "result_unable": "Haiwezi kuthibitishwa",
+    "records_of_total": "Kumbukumbu {{count}} kati ya {{total}}",
+    "col_status": "Hali"
   },
   "rpt": {
     "title": "Ripoti za Mahudhurio",
@@ -921,7 +940,7 @@
     "feat_7_title": "Arifa za wazazi",
     "feat_7_body": "Barua pepe za Resend huwatahadharisha wazazi kiotomatiki kila mtoto wao anapokataliwa ufikiaji langoni.",
     "feat_8_title": "Foleni ya nje ya mtandao",
-    "feat_8_body": "Hakuna mtandao? Scan zinarekodiwa ndani kwa IndexedDB na kulandanishwa na Supabase mara muunganisho unaporejesha.",
+    "feat_8_body": "Hakuna mtandao? Scan zinarekodiwa ndani kwa IndexedDB na kulandanishwa na hifadhidata ya ndani mara muunganisho unaporejesha.",
     "feat_9_title": "Msaada wa malango mengi",
     "feat_9_body": "Simamia malango mengi yenye majina kote campasini. Kila rekodi ya ufikiaji inaweka kumbukumbu ni lango gani na opereta gani aliyefanya scan.",
     "how_label": "Jinsi inavyofanya kazi",
@@ -929,7 +948,7 @@
     "step_1_title": "Mwanafunzi anawasilisha kadi ya utambulisho",
     "step_1_body": "Mwanafunzi anashikilia kadi yake mbele ya scanner ya barcode au, kwenye simu, mbele ya kamera ya kifaa. QR code nyuma inasomwa mara moja.",
     "step_2_title": "Mfumo unakagua hali kwa wakati halisi",
-    "step_2_body": "Msimbo ulioscanned unalinganishwa na hifadhidata ya Supabase. Hali, kusimamishwa, kumalizika na sheria za ufikiaji zinakaguliwa kwa chini ya sekunde moja.",
+    "step_2_body": "Msimbo ulioscanned unalinganishwa na hifadhidata ya PostgreSQL. Hali, kusimamishwa, kumalizika na sheria za ufikiaji zinakaguliwa kwa chini ya sekunde moja.",
     "step_3_title": "Matokeo yanaonyeshwa na kuwekwa rekodi",
     "step_3_body": "Kadi ya RUHUSIWA au KATALIWA inaonyesha picha na maelezo ya mwanafunzi. Tukio linawekwa kwenye rekodi ya kudumu na mzazi anaarifiwa ikiwa ufikiaji unakataliwa.",
     "mock_gate": "Uthibitishaji wa lango",
@@ -977,7 +996,7 @@
     "footer_inst": "Taasisi",
     "footer_ver": "Toleo",
     "footer_copy": "© {{year}} Chuo cha Ufundi Arusha · Haki zote zimehifadhiwa",
-    "footer_built": "Imejengwa na Supabase · React · TanStack Router"
+    "footer_built": "Mfumo wa Uthibitishaji wa Geti ya ABB Plant 3 · React · TanStack Router · Node.js · PostgreSQL"
   },
   "dash": {
     "title": "Dashibodi",
@@ -997,6 +1016,8 @@
     "view_all": "Tazama zote",
     "no_scans": "Hakuna skana bado. Fungua skana ya lango kuanza.",
     "dir_entry": "ndani",
-    "dir_exit": "nje"
+    "dir_exit": "nje",
+    "chart_capped": "Kiwango cha matukio {{limit}} ya hivi punde",
+    "series_scans": "Skana"
   }
 }

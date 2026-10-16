@@ -2,10 +2,10 @@ import { AUTHENTICATED, PUBLIC } from "../auth/middleware.js";
 import { hashPassword, verifyPassword } from "../auth/password.js";
 import { createSession, revokeSession } from "../auth/sessions.js";
 import { config } from "../config.js";
+import { findUserByUsername, updateLastLogin } from "../data/users.js";
 import { writeAudit } from "../lib/audit.js";
 import { tooManyRequests, unauthorized } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
-import { nowIso } from "../lib/time.js";
 import { loginSchema } from "../validation/schemas.js";
 
 const COOKIE_OPTIONS = {
@@ -15,10 +15,6 @@ const COOKIE_OPTIONS = {
   path: "/",
 };
 
-/**
- * A throwaway hash verified when the username does not exist, so a missing
- * account and a wrong password cost the same time — no username enumeration.
- */
 const ABSENT_USER_HASH = hashPassword("absent-user-placeholder");
 
 function publicUser(row) {
@@ -32,14 +28,12 @@ function publicUser(row) {
 }
 
 export function registerAuthRoutes({ registrar, db, rateLimiter, sessionTimeoutMinutes }) {
-  const selectUserByUsername = db.prepare("SELECT * FROM users WHERE username = ?");
-
   registrar.defineRoute({
     method: "POST",
     path: "/api/auth/login",
     access: PUBLIC,
     body: loginSchema,
-    handler: (req, res, next) => {
+    handler: async (req, res, next) => {
       const { username, password } = req.body;
       const rateKey = `login:${username.toLowerCase()}:${req.ip ?? "unknown"}`;
 
@@ -48,7 +42,7 @@ export function registerAuthRoutes({ registrar, db, rateLimiter, sessionTimeoutM
         return next(tooManyRequests());
       }
 
-      const user = selectUserByUsername.get(username);
+      const user = await findUserByUsername(db, username);
       const passwordOk = verifyPassword(password, user ? user.password_hash : ABSENT_USER_HASH);
 
       if (!user || !passwordOk || !user.is_active) {
@@ -58,13 +52,18 @@ export function registerAuthRoutes({ registrar, db, rateLimiter, sessionTimeoutM
 
       rateLimiter.reset(rateKey);
 
-      const session = createSession(db, { userId: user.id, timeoutMinutes: sessionTimeoutMinutes });
-      db.prepare("UPDATE users SET last_login_at = ? WHERE id = ?").run(nowIso(), user.id);
-      writeAudit(db, {
+      const session = await createSession(db, {
+        userId: user.id,
+        timeoutMinutes: sessionTimeoutMinutes,
+      });
+      await updateLastLogin(db, user.id);
+      await writeAudit(db, {
         actorUserId: user.id,
         action: "auth.login",
         entityType: "user",
         entityId: user.id,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
       });
 
       res.cookie(config.sessionCookieName, session.token, {
@@ -72,7 +71,10 @@ export function registerAuthRoutes({ registrar, db, rateLimiter, sessionTimeoutM
         expires: new Date(session.expiresAt),
       });
       logger.info("login succeeded", { userId: user.id, role: user.role });
-      res.json({ user: publicUser(user), expiresAt: session.expiresAt });
+      res.json({
+        user: publicUser(user),
+        expiresAt: new Date(session.expiresAt).toISOString(),
+      });
     },
   });
 
@@ -80,13 +82,15 @@ export function registerAuthRoutes({ registrar, db, rateLimiter, sessionTimeoutM
     method: "POST",
     path: "/api/auth/logout",
     access: AUTHENTICATED,
-    handler: (req, res) => {
-      if (req.sessionId) revokeSession(db, req.sessionId);
-      writeAudit(db, {
+    handler: async (req, res) => {
+      if (req.sessionId) await revokeSession(db, req.sessionId);
+      await writeAudit(db, {
         actorUserId: req.user.id,
         action: "auth.logout",
         entityType: "user",
         entityId: req.user.id,
+        ipAddress: req.ip,
+        userAgent: req.headers["user-agent"],
       });
       res.clearCookie(config.sessionCookieName, COOKIE_OPTIONS);
       res.json({ ok: true });

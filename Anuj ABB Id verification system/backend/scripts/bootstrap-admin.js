@@ -1,25 +1,23 @@
 import readline from "node:readline";
 import { hashPassword } from "../src/auth/password.js";
-import { config } from "../src/config.js";
-import { openDatabase } from "../src/db/connection.js";
+import { openDatabase, closeDatabase } from "../src/db/connection.js";
 import { runMigrations } from "../src/db/migrate.js";
+import { countAdministrators, insertUser } from "../src/data/users.js";
 import { writeAudit } from "../src/lib/audit.js";
-import { newId } from "../src/lib/ids.js";
-import { nowIso } from "../src/lib/time.js";
 
 /**
- * One-time bootstrap of the first administrator.
+ * One-time bootstrap of the first administrator account.
  *
- * The password is never accepted from a migration and never written to the
- * audit log. Provide it through the environment (ABB_ADMIN_*) or type it at a
- * hidden prompt. Refuses to run if an administrator already exists.
+ * Prompts privately for username and password (or accepts ABB_ADMIN_USERNAME and
+ * ABB_ADMIN_PASSWORD from the environment). Passwords are never logged or stored
+ * in plaintext. Refuses to run if an administrator already exists.
  */
 
 const USERNAME_PATTERN = /^[A-Za-z0-9._-]{3,64}$/;
 const MIN_PASSWORD_LENGTH = 12;
 
 function fail(message) {
-  process.stderr.write(`${message}\n`);
+  process.stderr.write(`Error: ${message}\n`);
   process.exit(1);
 }
 
@@ -64,13 +62,13 @@ function askHidden(question) {
         if (character === "\u0003") {
           cleanup();
           process.stdout.write("\n");
-          process.exit(130);
+          process.exit(1);
         }
-        if (character === "\u007f" || character === "\b") {
-          value = value.slice(0, -1);
-          continue;
+        if (character === "\b" || character === "\u007f") {
+          if (value.length > 0) value = value.slice(0, -1);
+        } else {
+          value += character;
         }
-        if (character >= " ") value += character;
       }
     }
 
@@ -78,71 +76,61 @@ function askHidden(question) {
   });
 }
 
-async function collectInput() {
-  const useEnv = Boolean(process.env.ABB_ADMIN_USERNAME && process.env.ABB_ADMIN_PASSWORD);
+async function main() {
+  const pool = openDatabase();
+  try {
+    // Ensure migrations have been applied first
+    await runMigrations(pool);
 
-  const username = process.env.ABB_ADMIN_USERNAME || (await askVisible("Administrator username: "));
-  const fullName = process.env.ABB_ADMIN_FULL_NAME || (await askVisible("Full name: "));
-  const email = process.env.ABB_ADMIN_EMAIL || "";
-  const password = process.env.ABB_ADMIN_PASSWORD || (await askHidden("Password (hidden): "));
-  const confirm = useEnv ? password : await askHidden("Confirm password: ");
+    const adminCount = await countAdministrators(pool);
+    if (adminCount > 0) {
+      fail(
+        "An active administrator account already exists. Use the user management screen to add more.",
+      );
+    }
 
-  return { username, fullName, email, password, confirm };
-}
+    let username = (process.env.ABB_ADMIN_USERNAME || "").trim();
+    if (!username) {
+      username = await askVisible("Choose an administrator username (letters, digits, dot, hyphen): ");
+    }
+    if (!USERNAME_PATTERN.test(username)) {
+      fail("Username must be 3-64 characters and contain only letters, digits, '.', '-' or '_'.");
+    }
 
-const input = await collectInput();
+    let password = process.env.ABB_ADMIN_PASSWORD || "";
+    if (!password) {
+      password = await askHidden("Choose an administrator password (min 12 characters): ");
+      const confirmation = await askHidden("Confirm password: ");
+      if (password !== confirmation) {
+        fail("Passwords do not match.");
+      }
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      fail(`Password must be at least ${MIN_PASSWORD_LENGTH} characters long.`);
+    }
 
-if (!USERNAME_PATTERN.test(input.username)) {
-  fail("Username must be 3-64 characters using letters, digits, dot, underscore or hyphen.");
-}
-if (!input.fullName) fail("Full name is required.");
-if (input.password.length < MIN_PASSWORD_LENGTH) {
-  fail(`Password must be at least ${MIN_PASSWORD_LENGTH} characters.`);
-}
-if (input.password !== input.confirm) fail("Passwords do not match.");
+    const created = await insertUser(pool, {
+      username,
+      fullName: "System Administrator",
+      role: "administrator",
+      passwordHash: hashPassword(password),
+      isActive: true,
+    });
 
-const db = openDatabase();
-try {
-  runMigrations(db);
+    await writeAudit(pool, {
+      actorUserId: created.id,
+      action: "bootstrap.admin",
+      entityType: "user",
+      entityId: created.id,
+      newValue: { username, role: "administrator" },
+    });
 
-  const existingAdmin = db
-    .prepare("SELECT id FROM users WHERE role = 'administrator' LIMIT 1")
-    .get();
-  if (existingAdmin) {
-    fail("An administrator already exists. Use the API to add further users; refusing to bootstrap.");
+    process.stdout.write(`Administrator "${username}" created successfully (ID: ${created.id}).\n`);
+  } catch (error) {
+    fail(`Bootstrap failed: ${error.message}`);
+  } finally {
+    await closeDatabase();
   }
-
-  const taken = db.prepare("SELECT id FROM users WHERE username = ? COLLATE NOCASE").get(input.username);
-  if (taken) fail("That username is already taken.");
-
-  const id = newId();
-  const timestamp = nowIso();
-  db.prepare(
-    `INSERT INTO users
-       (id, username, email, full_name, password_hash, role, is_active, created_at, updated_at, last_login_at)
-     VALUES (?, ?, ?, ?, ?, 'administrator', 1, ?, ?, NULL)`,
-  ).run(
-    id,
-    input.username,
-    input.email || null,
-    input.fullName,
-    hashPassword(input.password),
-    timestamp,
-    timestamp,
-  );
-
-  writeAudit(db, {
-    actorUserId: id,
-    action: "user.bootstrap",
-    entityType: "user",
-    entityId: id,
-    newValue: { username: input.username, role: "administrator", via: "bootstrap-admin" },
-  });
-
-  process.stdout.write(
-    `Administrator created: ${input.username}\ndatabase: ${config.dbPath}\n` +
-      `Next: npm start   (then sign in from the frontend)\n`,
-  );
-} finally {
-  db.close();
 }
+
+main();

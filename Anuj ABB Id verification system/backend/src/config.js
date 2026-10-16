@@ -1,7 +1,18 @@
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+// Auto-load .env if present (built into Node 20.12+ and Node 22+)
+const envPath = path.resolve(backendRoot, ".env");
+if (fs.existsSync(envPath) && typeof process.loadEnvFile === "function") {
+  try {
+    process.loadEnvFile(envPath);
+  } catch {
+    // Non-fatal if parsing fails; environment variables already in process.env take priority
+  }
+}
 
 function intFromEnv(name, fallback) {
   const raw = process.env[name];
@@ -28,7 +39,6 @@ function listFromEnv(name, fallback) {
 }
 
 const nodeEnv = process.env.NODE_ENV || "development";
-const dbPathSetting = process.env.DB_PATH || "./data/abb-plant3.db";
 
 // In development the browser app runs on a different origin from the API
 // (Vite on :8080, Express on :4000). Nothing is allowed by default in
@@ -42,13 +52,18 @@ export const config = {
   isProduction: nodeEnv === "production",
   host: process.env.HOST || "127.0.0.1",
   port: intFromEnv("PORT", 4000),
-  dbPath: path.isAbsolute(dbPathSetting) ? dbPathSetting : path.resolve(backendRoot, dbPathSetting),
+  databaseUrl: process.env.DATABASE_URL || "",
+  migrationDatabaseUrl:
+    process.env.MIGRATION_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    "",
   migrationsDir: path.join(backendRoot, "migrations"),
-  sessionCookieName: "abb_session",
+  sessionCookieName: process.env.SESSION_COOKIE_NAME || "abb_session",
   sessionTimeoutMinutes: intFromEnv("SESSION_TIMEOUT_MINUTES", 30),
   sessionCookieSecure: boolFromEnv("SESSION_COOKIE_SECURE", nodeEnv === "production"),
   trustProxy: boolFromEnv("TRUST_PROXY", false),
   corsOrigins: listFromEnv("CORS_ORIGINS", defaultCorsOrigins),
+  uploadsDir: path.join(backendRoot, "uploads"),
   loginRateLimit: {
     windowMs: intFromEnv("LOGIN_RATE_WINDOW_MS", 15 * 60 * 1000),
     max: intFromEnv("LOGIN_RATE_MAX", 5),
